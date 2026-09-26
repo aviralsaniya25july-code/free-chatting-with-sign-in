@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Chat Room</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Segoe UI', Arial, sans-serif; }
+body {
+height: 100vh;
+display: flex;
+align-items: center;
+justify-content: center;
+background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+}
+#join-screen {
+background: white;
+padding: 40px;
+border-radius: 16px;
+box-shadow: 0 10px 40px rgba(0,0,0,0.3);
+width: 320px;
+text-align: center;
+}
+#join-screen h1 { margin-bottom: 20px; color: #764ba2; }
+#join-screen input {
+width: 100%;
+padding: 12px;
+margin: 8px 0;
+border: 2px solid #ddd;
+border-radius: 8px;
+font-size: 15px;
+}
+#join-screen button {
+width: 100%;
+padding: 12px;
+margin-top: 12px;
+background: #764ba2;
+color: white;
+border: none;
+border-radius: 8px;
+font-size: 16px;
+cursor: pointer;
+}
+#chat-screen {
+display: none;
+width: 400px;
+height: 600px;
+background: white;
+border-radius: 16px;
+box-shadow: 0 10px 40px rgba(0,0,0,0.3);
+flex-direction: column;
+overflow: hidden;
+}
+#chat-header {
+background: #764ba2;
+color: white;
+padding: 16px;
+font-size: 18px;
+font-weight: bold;
+}
+#messages {
+flex: 1;
+padding: 16px;
+overflow-y: auto;
+background: #f5f5f5;
+}
+.msg { margin-bottom: 10px; max-width: 75%; }
+.msg.mine { margin-left: auto; text-align: right; }
+.msg .bubble {
+display: inline-block;
+padding: 10px 14px;
+border-radius: 14px;
+background: #e0e0e0;
+}
+.msg.mine .bubble { background: #764ba2; color: white; }
+.msg .sender { font-size: 12px; color: #888; margin-bottom: 2px; }
+.msg img, .msg video { max-width: 220px; border-radius: 10px; display: block; margin-top: 4px; }
+.system-msg { text-align: center; color: #999; font-size: 13px; margin: 8px 0; }
+#input-area {
+display: flex;
+padding: 12px;
+border-top: 1px solid #ddd;
+gap: 8px;
+align-items: center;
+}
+#input-area input[type=text] {
+flex: 1;
+padding: 10px;
+border: 2px solid #ddd;
+border-radius: 20px;
+font-size: 14px;
+}
+#input-area button, #input-area label {
+background: #764ba2;
+color: white;
+border: none;
+border-radius: 50%;
+width: 42px;
+height: 42px;
+display: flex;
+align-items: center;
+justify-content: center;
+cursor: pointer;
+font-size: 18px;
+flex-shrink: 0;
+}
+#input-area input[type=file] { display: none; }
+</style>
+</head>
+<body>
+
+<div id="join-screen">
+<h1>Join Chat</h1>
+<input type="text" id="name-input" placeholder="Your Name">
+<input type="text" id="room-input" placeholder="Room Code">
+<button onclick="joinRoom()">Join Room</button>
+</div>
+
+<div id="chat-screen">
+<div id="chat-header">Room: <span id="room-label"></span></div>
+<div id="messages"></div>
+<div id="input-area">
+<label for="media-input">📎</label>
+<input type="file" id="media-input" accept="image/*,video/*">
+<input type="text" id="msg-input" placeholder="Type a message">
+<button onclick="sendMessage()">➤</button>
+</div>
+</div>
+
+<script src="/socket.io/socket.io.js"></script>
+<script>
+const socket = io();
+let myName = "";
+
+function joinRoom() {
+const name = document.getElementById('name-input').value.trim();
+const room = document.getElementById('room-input').value.trim();
+if (!name || !room) return alert("Please enter name and room code");
+myName = name;
+socket.emit('join-room', { name, roomCode: room });
+document.getElementById('join-screen').style.display = 'none';
+document.getElementById('chat-screen').style.display = 'flex';
+document.getElementById('room-label').innerText = room;
+}
+
+function sendMessage() {
+const input = document.getElementById('msg-input');
+const text = input.value.trim();
+if (!text) return;
+socket.emit('chat-message', text);
+input.value = '';
+}
+
+document.getElementById('msg-input').addEventListener('keypress', (e) => {
+if (e.key === 'Enter') sendMessage();
+});
+
+document.getElementById('media-input').addEventListener('change', async (e) => {
+const file = e.target.files[0];
+if (!file) return;
+
+const formData = new FormData();
+formData.append('file', file);
+
+try {
+const res = await fetch('/upload', { method: 'POST', body: formData });
+const result = await res.json();
+if (result.url) {
+socket.emit('media-message', { url: result.url, type: result.type });
+}
+} catch (err) {
+alert('Upload failed, please try again');
+}
+e.target.value = '';
+});
+
+socket.on('chat-message', ({ name, message }) => {
+addTextMessage(name, message, name === myName);
+});
+
+socket.on('media-message', ({ name, url, type }) => {
+addMediaMessage(name, url, type, name === myName);
+});
+
+socket.on('system-message', (text) => {
+const div = document.createElement('div');
+div.className = 'system-msg';
+div.innerText = text;
+document.getElementById('messages').appendChild(div);
+scrollDown();
+});
+
+function addTextMessage(name, text, mine) {
+const wrap = document.createElement('div');
+wrap.className = 'msg' + (mine ? ' mine' : '');
+wrap.innerHTML = `<div class="sender">${mine ? '' : name}</div><div class="bubble">${escapeHtml(text)}</div>`;
+document.getElementById('messages').appendChild(wrap);
+scrollDown();
+}
+
+function addMediaMessage(name, url, type, mine) {
+const wrap = document.createElement('div');
+wrap.className = 'msg' + (mine ? ' mine' : '');
+let mediaTag = '';
+if (type.startsWith('image/')) {
+mediaTag = `<img src="${url}" oncontextmenu="return false;">`;
+} else if (type.startsWith('video/')) {
+mediaTag = `<video src="${url}" controls controlsList="nodownload" oncontextmenu="return false;"></video>`;
+}
+wrap.innerHTML = `<div class="sender">${mine ? '' : name}</div><div class="bubble">${mediaTag}</div>`;
+document.getElementById('messages').appendChild(wrap);
+scrollDown();
+}
+
+function scrollDown() {
+const box = document.getElementById('messages');
+box.scrollTop = box.scrollHeight;
+}
+
+function escapeHtml(str) {
+const div = document.createElement('div');
+div.innerText = str;
+return div.innerHTML;
+}
+</script>
+</body>
+</html>
