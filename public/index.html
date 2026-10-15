@@ -203,15 +203,12 @@ const wrap = document.createElement('div');
 wrap.className = 'msg' + (mine ? ' mine' : '');
 let mediaTag = '';
 if (type.startsWith('image/')) {
-mediaTag = `<img src="${url}" oncontextmenu="return false;">`;
+mediaTag = '';
 } else if (type.startsWith('video/')) {
-mediaTag = `<video src="${url}" controls controlsList="nodownload" oncontextmenu="return false;"></video>`;
+mediaTag = '';
 }
-wrap.innerHTML = `<div class="sender">${mine ? '' : name}</div><div class="bubble">${mediaTag}</div>`;
-document.getElementById('messages').appendChild(wrap);
-scrollDown();
+wrap.innerHTML = '' + (mine ? '' : name) + '' + mediaTag + ' Download';
 }
-
 function scrollDown() {
 const box = document.getElementById('messages');
 box.scrollTop = box.scrollHeight;
