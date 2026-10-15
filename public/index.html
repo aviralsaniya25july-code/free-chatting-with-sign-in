@@ -203,11 +203,13 @@ const wrap = document.createElement('div');
 wrap.className = 'msg' + (mine ? ' mine' : '');
 let mediaTag = '';
 if (type.startsWith('image/')) {
-mediaTag = '';
+mediaTag = '<img src="' + url + '">';
 } else if (type.startsWith('video/')) {
-mediaTag = '';
+mediaTag = '<video src="' + url + '" controls></video>';
 }
-wrap.innerHTML = '' + (mine ? '' : name) + '' + mediaTag + ' Download';
+wrap.innerHTML = '<div class="sender">' + (mine ? '' : name) + '</div><div class="bubble">' + mediaTag + '<br><a href="' + url + '" download>Download</a></div>';
+  document.getElementById('messages').appendChild(wrap);
+scrollDown();
 }
 function scrollDown() {
 const box = document.getElementById('messages');
