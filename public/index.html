@@ -221,4 +221,174 @@ function sendMessage() {
   const input = document.getElementById('msg-input');
   const text = input.value.trim();
   if (!text) return;
-  socket.emit('chat-message', { message:
+  socket.emit('chat-message', { message: text, replyTo: replyingTo });
+  input.value = '';
+  cancelReply();
+  stopTyping();
+}
+
+/* ---------- Typing indicator ---------- */
+const msgInput = document.getElementById('msg-input');
+
+msgInput.addEventListener('input', () => {
+  if (!isTyping) {
+    isTyping = true;
+    socket.emit('typing');
+  }
+  clearTimeout(typingTimeout);
+  typingTimeout = setTimeout(stopTyping, 1500);
+});
+
+function stopTyping() {
+  clearTimeout(typingTimeout);
+  if (isTyping) {
+    isTyping = false;
+    socket.emit('stop-typing');
+  }
+}
+
+socket.on('typing', ({ name }) => {
+  typingUsers.add(name);
+  updateTypingText();
+});
+
+socket.on('stop-typing', ({ name }) => {
+  typingUsers.delete(name);
+  updateTypingText();
+});
+
+function updateTypingText() {
+  const el = document.getElementById('typing-indicator');
+  const names = Array.from(typingUsers);
+  if (names.length === 0) el.innerText = '';
+  else if (names.length === 1) el.innerText = names[0] + ' is typing...';
+  else el.innerText = names.join(', ') + ' are typing...';
+}
+
+/* ---------- Reply ---------- */
+function startReply(id, name, preview) {
+  replyingTo = { id, name, preview };
+  document.getElementById('rp-text').innerText = 'Replying to ' + name + ': ' + preview;
+  document.getElementById('reply-preview').style.display = 'flex';
+  msgInput.focus();
+}
+
+function cancelReply() {
+  replyingTo = null;
+  document.getElementById('reply-preview').style.display = 'none';
+}
+
+function scrollToMessage(id) {
+  const el = document.querySelector('[data-id="' + id + '"]');
+  if (!el) return;
+  el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  el.classList.add('highlight');
+  setTimeout(() => el.classList.remove('highlight'), 1500);
+}
+
+function buildQuotedHtml(replyTo) {
+  if (!replyTo) return '';
+  return '<div class="quoted" onclick="scrollToMessage(\'' + replyTo.id + '\')">' +
+    '<div class="q-name">' + escapeHtml(replyTo.name) + '</div>' +
+    '<div>' + escapeHtml(replyTo.preview) + '</div></div>';
+}
+
+/* ---------- Media upload ---------- */
+msgInput.addEventListener('keypress', (e) => {
+  if (e.key === 'Enter') sendMessage();
+});
+
+document.getElementById('media-input').addEventListener('change', async (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+
+  const formData = new FormData();
+  formData.append('file', file);
+
+  try {
+    const res = await fetch('/upload', { method: 'POST', body: formData });
+    const result = await res.json();
+    if (result.url) {
+      socket.emit('media-message', { url: result.url, type: result.type, replyTo: replyingTo });
+      cancelReply();
+    }
+  } catch (err) {
+    alert('Upload failed, please try again');
+  }
+  e.target.value = '';
+});
+
+/* ---------- Incoming messages ---------- */
+socket.on('chat-message', ({ id, name, message, replyTo }) => {
+  typingUsers.delete(name);
+  updateTypingText();
+  addTextMessage(id, name, message, name === myName, replyTo);
+});
+
+socket.on('media-message', ({ id, name, url, type, replyTo }) => {
+  typingUsers.delete(name);
+  updateTypingText();
+  addMediaMessage(id, name, url, type, name === myName, replyTo);
+});
+
+socket.on('system-message', (text) => {
+  const div = document.createElement('div');
+  div.className = 'system-msg';
+  div.innerText = text;
+  document.getElementById('messages').appendChild(div);
+  scrollDown();
+});
+
+function addTextMessage(id, name, text, mine, replyTo) {
+  const wrap = document.createElement('div');
+  wrap.className = 'msg' + (mine ? ' mine' : '');
+  wrap.setAttribute('data-id', id);
+  wrap.innerHTML =
+    '<div class="sender">' + (mine ? '' : escapeHtml(name)) + '</div>' +
+    '<div class="bubble">' + buildQuotedHtml(replyTo) + escapeHtml(text) + '</div>' +
+    '<br><button class="reply-btn">↩ Reply</button>';
+  wrap.querySelector('.reply-btn').addEventListener('click', () => {
+    startReply(id, name, text.length > 50 ? text.slice(0, 50) + '...' : text);
+  });
+  document.getElementById('messages').appendChild(wrap);
+  scrollDown();
+}
+
+function addMediaMessage(id, name, url, type, mine, replyTo) {
+  const wrap = document.createElement('div');
+  wrap.className = 'msg' + (mine ? ' mine' : '');
+  wrap.setAttribute('data-id', id);
+  let mediaTag = '';
+  let label = '📎 File';
+  if (type.startsWith('image/')) {
+    mediaTag = '<img src="' + url + '">';
+    label = '📷 Photo';
+  } else if (type.startsWith('video/')) {
+    mediaTag = '<video src="' + url + '" controls></video>';
+    label = '🎥 Video';
+  }
+  wrap.innerHTML =
+    '<div class="sender">' + (mine ? '' : escapeHtml(name)) + '</div>' +
+    '<div class="bubble">' + buildQuotedHtml(replyTo) + mediaTag +
+    '<br><a href="' + url + '" download>Download</a></div>' +
+    '<br><button class="reply-btn">↩ Reply</button>';
+  wrap.querySelector('.reply-btn').addEventListener('click', () => {
+    startReply(id, name, label);
+  });
+  document.getElementById('messages').appendChild(wrap);
+  scrollDown();
+}
+
+function scrollDown() {
+  const box = document.getElementById('messages');
+  box.scrollTop = box.scrollHeight;
+}
+
+function escapeHtml(str) {
+  const div = document.createElement('div');
+  div.innerText = str;
+  return div.innerHTML;
+}
+</script>
+</body>
+</html>
