@@ -13,6 +13,7 @@ body {
   justify-content: center;
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
 }
+body.swiping { user-select: none; -webkit-user-select: none; }
 #join-screen {
   background: white;
   padding: 40px;
@@ -43,6 +44,7 @@ body {
 }
 #chat-screen {
   display: none;
+  position: relative;
   width: 400px;
   height: 600px;
   background: white;
@@ -57,15 +59,58 @@ body {
   padding: 16px;
   font-size: 18px;
   font-weight: bold;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+#header-actions { display: flex; align-items: center; gap: 8px; }
+#perm-btn {
+  border: none;
+  background: rgba(255,255,255,0.2);
+  color: white;
+  font-size: 12px;
+  padding: 6px 10px;
+  border-radius: 14px;
+  cursor: pointer;
+  display: none;
+}
+#heart-btn {
+  display: none;
+  border: none;
+  background: transparent;
+  font-size: 18px;
+  cursor: pointer;
+  opacity: 0.55;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
 }
 #messages {
   flex: 1;
   padding: 16px;
   overflow-y: auto;
+  overflow-x: hidden;
   background: #f5f5f5;
 }
-.msg { margin-bottom: 10px; max-width: 75%; position: relative; }
+.msg {
+  margin-bottom: 10px;
+  max-width: 75%;
+  position: relative;
+  touch-action: pan-y;
+}
 .msg.mine { margin-left: auto; text-align: right; }
+.msg::before {
+  content: '↩';
+  position: absolute;
+  left: -26px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: #764ba2;
+  font-size: 18px;
+  opacity: var(--swipe, 0);
+}
+.msg.swipe-ready::before { font-weight: bold; }
 .msg .bubble {
   display: inline-block;
   padding: 10px 14px;
@@ -77,18 +122,6 @@ body {
 .msg .sender { font-size: 12px; color: #888; margin-bottom: 2px; }
 .msg img, .msg video { max-width: 220px; border-radius: 10px; display: block; margin-top: 4px; }
 .system-msg { text-align: center; color: #999; font-size: 13px; margin: 8px 0; }
-
-/* Reply button (har message ke saath) */
-.reply-btn {
-  border: none;
-  background: transparent;
-  color: #764ba2;
-  font-size: 12px;
-  cursor: pointer;
-  margin-top: 2px;
-  opacity: 0.6;
-}
-.reply-btn:hover { opacity: 1; }
 
 /* Message ke andar quoted reply */
 .quoted {
@@ -170,6 +203,76 @@ body {
   flex-shrink: 0;
 }
 #input-area input[type=file] { display: none; }
+
+/* Overlays (password box + history) */
+.overlay {
+  display: none;
+  position: absolute;
+  inset: 0;
+  background: rgba(0,0,0,0.5);
+  z-index: 10;
+  align-items: center;
+  justify-content: center;
+}
+.modal-box {
+  background: white;
+  width: 300px;
+  padding: 20px;
+  border-radius: 14px;
+  text-align: center;
+}
+.modal-box h3 { color: #764ba2; margin-bottom: 8px; }
+.modal-box p { font-size: 12px; color: #777; margin-bottom: 8px; }
+.modal-box input {
+  width: 100%;
+  padding: 10px;
+  margin: 6px 0;
+  border: 2px solid #ddd;
+  border-radius: 8px;
+  font-size: 14px;
+}
+#modal-error { color: #d32f2f; font-size: 12px; min-height: 16px; margin: 4px 0; }
+.modal-actions { display: flex; gap: 8px; margin-top: 6px; }
+.modal-actions button {
+  flex: 1;
+  padding: 10px;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 14px;
+}
+#modal-cancel { background: #e0e0e0; }
+#modal-ok { background: #764ba2; color: white; }
+
+.history-box {
+  background: white;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+.history-head {
+  background: #764ba2;
+  color: white;
+  padding: 14px 16px;
+  font-weight: bold;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.history-head button {
+  border: none;
+  background: transparent;
+  color: white;
+  font-size: 16px;
+  cursor: pointer;
+}
+#history-list { flex: 1; overflow-y: auto; padding: 12px 16px; background: #f5f5f5; }
+.hist-item { margin-bottom: 10px; font-size: 14px; }
+.hist-item .h-name { font-weight: bold; color: #764ba2; }
+.hist-item .h-time { font-size: 11px; color: #999; margin-left: 6px; }
+.hist-item img, .hist-item video { max-width: 200px; border-radius: 10px; display: block; margin-top: 4px; }
+.hist-empty { text-align: center; color: #999; margin-top: 30px; font-size: 14px; }
 </style>
 </head>
 <body>
@@ -182,7 +285,13 @@ body {
 </div>
 
 <div id="chat-screen">
-  <div id="chat-header">Room: <span id="room-label"></span></div>
+  <div id="chat-header">
+    <span>Room: <span id="room-label"></span></span>
+    <span id="header-actions">
+      <button id="perm-btn">📌 Make permanent</button>
+      <button id="heart-btn" title="">❤️</button>
+    </span>
+  </div>
   <div id="messages"></div>
   <div id="typing-indicator"></div>
   <div id="reply-preview">
@@ -194,6 +303,32 @@ body {
     <input type="file" id="media-input" accept="image/*,video/*">
     <input type="text" id="msg-input" placeholder="Type a message">
     <button onclick="sendMessage()">➤</button>
+  </div>
+
+  <!-- Password box -->
+  <div id="modal" class="overlay">
+    <div class="modal-box">
+      <h3 id="modal-title"></h3>
+      <p id="modal-note"></p>
+      <input type="password" id="modal-pass" placeholder="Password">
+      <input type="password" id="modal-pass2" placeholder="Password dobara likho">
+      <div id="modal-error"></div>
+      <div class="modal-actions">
+        <button id="modal-cancel">Cancel</button>
+        <button id="modal-ok">OK</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Chat history -->
+  <div id="history-panel" class="overlay">
+    <div class="history-box">
+      <div class="history-head">
+        <span>❤️ Chat history</span>
+        <button onclick="closeHistory()">✖</button>
+      </div>
+      <div id="history-list"></div>
+    </div>
   </div>
 </div>
 
@@ -220,175 +355,3 @@ function joinRoom() {
 function sendMessage() {
   const input = document.getElementById('msg-input');
   const text = input.value.trim();
-  if (!text) return;
-  socket.emit('chat-message', { message: text, replyTo: replyingTo });
-  input.value = '';
-  cancelReply();
-  stopTyping();
-}
-
-/* ---------- Typing indicator ---------- */
-const msgInput = document.getElementById('msg-input');
-
-msgInput.addEventListener('input', () => {
-  if (!isTyping) {
-    isTyping = true;
-    socket.emit('typing');
-  }
-  clearTimeout(typingTimeout);
-  typingTimeout = setTimeout(stopTyping, 1500);
-});
-
-function stopTyping() {
-  clearTimeout(typingTimeout);
-  if (isTyping) {
-    isTyping = false;
-    socket.emit('stop-typing');
-  }
-}
-
-socket.on('typing', ({ name }) => {
-  typingUsers.add(name);
-  updateTypingText();
-});
-
-socket.on('stop-typing', ({ name }) => {
-  typingUsers.delete(name);
-  updateTypingText();
-});
-
-function updateTypingText() {
-  const el = document.getElementById('typing-indicator');
-  const names = Array.from(typingUsers);
-  if (names.length === 0) el.innerText = '';
-  else if (names.length === 1) el.innerText = names[0] + ' is typing...';
-  else el.innerText = names.join(', ') + ' are typing...';
-}
-
-/* ---------- Reply ---------- */
-function startReply(id, name, preview) {
-  replyingTo = { id, name, preview };
-  document.getElementById('rp-text').innerText = 'Replying to ' + name + ': ' + preview;
-  document.getElementById('reply-preview').style.display = 'flex';
-  msgInput.focus();
-}
-
-function cancelReply() {
-  replyingTo = null;
-  document.getElementById('reply-preview').style.display = 'none';
-}
-
-function scrollToMessage(id) {
-  const el = document.querySelector('[data-id="' + id + '"]');
-  if (!el) return;
-  el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-  el.classList.add('highlight');
-  setTimeout(() => el.classList.remove('highlight'), 1500);
-}
-
-function buildQuotedHtml(replyTo) {
-  if (!replyTo) return '';
-  return '<div class="quoted" onclick="scrollToMessage(\'' + replyTo.id + '\')">' +
-    '<div class="q-name">' + escapeHtml(replyTo.name) + '</div>' +
-    '<div>' + escapeHtml(replyTo.preview) + '</div></div>';
-}
-
-/* ---------- Media upload ---------- */
-msgInput.addEventListener('keypress', (e) => {
-  if (e.key === 'Enter') sendMessage();
-});
-
-document.getElementById('media-input').addEventListener('change', async (e) => {
-  const file = e.target.files[0];
-  if (!file) return;
-
-  const formData = new FormData();
-  formData.append('file', file);
-
-  try {
-    const res = await fetch('/upload', { method: 'POST', body: formData });
-    const result = await res.json();
-    if (result.url) {
-      socket.emit('media-message', { url: result.url, type: result.type, replyTo: replyingTo });
-      cancelReply();
-    }
-  } catch (err) {
-    alert('Upload failed, please try again');
-  }
-  e.target.value = '';
-});
-
-/* ---------- Incoming messages ---------- */
-socket.on('chat-message', ({ id, name, message, replyTo }) => {
-  typingUsers.delete(name);
-  updateTypingText();
-  addTextMessage(id, name, message, name === myName, replyTo);
-});
-
-socket.on('media-message', ({ id, name, url, type, replyTo }) => {
-  typingUsers.delete(name);
-  updateTypingText();
-  addMediaMessage(id, name, url, type, name === myName, replyTo);
-});
-
-socket.on('system-message', (text) => {
-  const div = document.createElement('div');
-  div.className = 'system-msg';
-  div.innerText = text;
-  document.getElementById('messages').appendChild(div);
-  scrollDown();
-});
-
-function addTextMessage(id, name, text, mine, replyTo) {
-  const wrap = document.createElement('div');
-  wrap.className = 'msg' + (mine ? ' mine' : '');
-  wrap.setAttribute('data-id', id);
-  wrap.innerHTML =
-    '<div class="sender">' + (mine ? '' : escapeHtml(name)) + '</div>' +
-    '<div class="bubble">' + buildQuotedHtml(replyTo) + escapeHtml(text) + '</div>' +
-    '<br><button class="reply-btn">↩ Reply</button>';
-  wrap.querySelector('.reply-btn').addEventListener('click', () => {
-    startReply(id, name, text.length > 50 ? text.slice(0, 50) + '...' : text);
-  });
-  document.getElementById('messages').appendChild(wrap);
-  scrollDown();
-}
-
-function addMediaMessage(id, name, url, type, mine, replyTo) {
-  const wrap = document.createElement('div');
-  wrap.className = 'msg' + (mine ? ' mine' : '');
-  wrap.setAttribute('data-id', id);
-  let mediaTag = '';
-  let label = '📎 File';
-  if (type.startsWith('image/')) {
-    mediaTag = '<img src="' + url + '">';
-    label = '📷 Photo';
-  } else if (type.startsWith('video/')) {
-    mediaTag = '<video src="' + url + '" controls></video>';
-    label = '🎥 Video';
-  }
-  wrap.innerHTML =
-    '<div class="sender">' + (mine ? '' : escapeHtml(name)) + '</div>' +
-    '<div class="bubble">' + buildQuotedHtml(replyTo) + mediaTag +
-    '<br><a href="' + url + '" download>Download</a></div>' +
-    '<br><button class="reply-btn">↩ Reply</button>';
-  wrap.querySelector('.reply-btn').addEventListener('click', () => {
-    startReply(id, name, label);
-  });
-  document.getElementById('messages').appendChild(wrap);
-  scrollDown();
-}
-
-function scrollDown() {
-  const box = document.getElementById('messages');
-  box.scrollTop = box.scrollHeight;
-}
-
-function escapeHtml(str) {
-  const div = document.createElement('div');
-  div.innerText = str;
-  return div.innerHTML;
-}
-</script>
-</body>
-</html>
