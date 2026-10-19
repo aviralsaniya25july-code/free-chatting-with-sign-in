@@ -1,3 +1,6 @@
+यह तुम्हारा पूरा अपडेटेड server.js है, इसमें secret chat के लिए अलग इवेंट्स जोड़े हैं — secret-message भेजने के लिए और secret-history पुराने secret मैसेज लोड करने के लिए। secret chat सिर्फ उसी को मिलता है जिसने सही पासवर्ड से history unlock किया हो:
+
+js
 const express = require('express');
 const http = require('http');
 const socketIo = require('socket.io');
@@ -83,14 +86,12 @@ async function isPermanent(roomCode) {
   return value;
 }
 
-async function saveMessage(roomCode, msg) {
+async function saveSecretMessage(roomCode, msg) {
   if (!db) return;
   try {
-    if (await isPermanent(roomCode)) {
-      await roomRef(roomCode).collection('messages').doc(msg.id).set(msg);
-    }
+    await roomRef(roomCode).collection('secretMessages').doc(msg.id).set(msg);
   } catch (err) {
-    console.error('Message save failed:', err.message);
+    console.error('Secret message save failed:', err.message);
   }
 }
 
@@ -98,11 +99,13 @@ async function saveMessage(roomCode, msg) {
 io.on('connection', (socket) => {
   socket.data.failedAttempts = 0;
   socket.data.lockUntil = 0;
+  socket.data.unlocked = false; // secret chat ka access mila hai ya nahi
 
   socket.on('join-room', async ({ name, roomCode }) => {
     socket.join(roomCode);
     socket.data.name = name;
     socket.data.roomCode = roomCode;
+    socket.data.unlocked = false;
     io.to(roomCode).emit('system-message', `${name} joined the room`);
 
     try {
@@ -134,14 +137,14 @@ io.on('connection', (socket) => {
       });
       permanentRooms.set(roomCode, true);
       io.to(roomCode).emit('room-info', { permanent: true });
-      io.to(roomCode).emit('system-message', 'Ye room ab permanent hai, chat history save hogi');
+      io.to(roomCode).emit('system-message', 'Ye room ab permanent hai');
     } catch (err) {
       console.error('Make permanent failed:', err.message);
       socket.emit('permanent-error', 'Kuch gadbad hui, dobara try karo');
     }
   });
 
-  // Chat history dekhne ke liye password
+  // Secret chat unlock karne ke liye password
   socket.on('unlock-history', async ({ password }) => {
     const { roomCode } = socket.data;
     if (!roomCode || !db) return;
@@ -167,8 +170,10 @@ io.on('connection', (socket) => {
       }
 
       socket.data.failedAttempts = 0;
+      socket.data.unlocked = true;
+
       const msgs = await roomRef(roomCode)
-        .collection('messages')
+        .collection('secretMessages')
         .orderBy('ts', 'desc')
         .limit(200)
         .get();
@@ -180,7 +185,7 @@ io.on('connection', (socket) => {
     }
   });
 
-  // Typing indicator
+  // Typing indicator (normal chat)
   socket.on('typing', () => {
     const { name, roomCode } = socket.data;
     if (roomCode) socket.to(roomCode).emit('typing', { name });
@@ -191,7 +196,7 @@ io.on('connection', (socket) => {
     if (roomCode) socket.to(roomCode).emit('stop-typing', { name });
   });
 
-  // Text message (reply support ke saath)
+  // Normal text message (kabhi save nahi hoti)
   socket.on('chat-message', (data) => {
     const { name, roomCode } = socket.data;
     if (!roomCode) return;
@@ -200,19 +205,56 @@ io.on('connection', (socket) => {
     const message = isObj ? data.message : data;
     const replyTo = isObj ? (data.replyTo || null) : null;
 
-    const msg = { id: makeId(), name, message, replyTo };
-    io.to(roomCode).emit('chat-message', msg);
-    saveMessage(roomCode, { ...msg, kind: 'text', ts: Date.now() });
+    io.to(roomCode).emit('chat-message', { id: makeId(), name, message, replyTo });
   });
 
-  // Media message (reply support ke saath)
+  // Normal media message (kabhi save nahi hoti)
   socket.on('media-message', ({ url, type, replyTo }) => {
     const { name, roomCode } = socket.data;
     if (!roomCode) return;
 
-    const msg = { id: makeId(), name, url, type, replyTo: replyTo || null };
-    io.to(roomCode).emit('media-message', msg);
-    saveMessage(roomCode, { ...msg, kind: 'media', ts: Date.now() });
+    io.to(roomCode).emit('media-message', {
+      id: makeId(),
+      name,
+      url,
+      type,
+      replyTo: replyTo || null
+    });
+  });
+
+  // Secret chat ka text message - sirf unlocked logon ko dikhta hai, hamesha save hota hai
+  socket.on('secret-message', (data) => {
+    const { name, roomCode, unlocked } = socket.data;
+    if (!roomCode || !unlocked) return;
+
+    const isObj = typeof data === 'object' && data !== null;
+    const message = isObj ? data.message : data;
+    const replyTo = isObj ? (data.replyTo || null) : null;
+
+    const msg = { id: makeId(), name, message, replyTo, kind: 'text', ts: Date.now() };
+
+    // Sirf un sockets ko bhejo jo isi room mein unlocked hain
+    for (const [, s] of io.sockets.sockets) {
+      if (s.data.roomCode === roomCode && s.data.unlocked) {
+        s.emit('secret-message', msg);
+      }
+    }
+    saveSecretMessage(roomCode, msg);
+  });
+
+  // Secret chat ka media message
+  socket.on('secret-media-message', ({ url, type, replyTo }) => {
+    const { name, roomCode, unlocked } = socket.data;
+    if (!roomCode || !unlocked) return;
+
+    const msg = { id: makeId(), name, url, type, replyTo: replyTo || null, kind: 'media', ts: Date.now() };
+
+    for (const [, s] of io.sockets.sockets) {
+      if (s.data.roomCode === roomCode && s.data.unlocked) {
+        s.emit('secret-message', msg);
+      }
+    }
+    saveSecretMessage(roomCode, msg);
   });
 
   socket.on('disconnect', () => {
