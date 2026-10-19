@@ -2,333 +2,101 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Chat Room</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Chat</title>
 <style>
-* { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Segoe UI', Arial, sans-serif; }
-body {
-  height: 100vh;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-}
-body.swiping { user-select: none; -webkit-user-select: none; }
-#join-screen {
-  background: white;
-  padding: 40px;
-  border-radius: 16px;
-  box-shadow: 0 10px 40px rgba(0,0,0,0.3);
-  width: 320px;
-  text-align: center;
-}
-#join-screen h1 { margin-bottom: 20px; color: #764ba2; }
-#join-screen input {
-  width: 100%;
-  padding: 12px;
-  margin: 8px 0;
-  border: 2px solid #ddd;
-  border-radius: 8px;
-  font-size: 15px;
-}
-#join-screen button {
-  width: 100%;
-  padding: 12px;
-  margin-top: 12px;
-  background: #764ba2;
-  color: white;
-  border: none;
-  border-radius: 8px;
-  font-size: 16px;
-  cursor: pointer;
-}
-#chat-screen {
-  display: none;
-  position: relative;
-  width: 400px;
-  height: 600px;
-  background: white;
-  border-radius: 16px;
-  box-shadow: 0 10px 40px rgba(0,0,0,0.3);
-  flex-direction: column;
-  overflow: hidden;
-}
-#chat-header {
-  background: #764ba2;
-  color: white;
-  padding: 16px;
-  font-size: 18px;
-  font-weight: bold;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-}
-#header-actions { display: flex; align-items: center; gap: 8px; }
-#perm-btn {
-  border: none;
-  background: rgba(255,255,255,0.2);
-  color: white;
-  font-size: 12px;
-  padding: 6px 10px;
-  border-radius: 14px;
-  cursor: pointer;
-  display: none;
-}
-#heart-btn {
-  display: none;
-  border: none;
-  background: transparent;
-  font-size: 18px;
-  cursor: pointer;
-  opacity: 0.55;
-  user-select: none;
-  -webkit-user-select: none;
-  -webkit-touch-callout: none;
-}
-#messages {
-  flex: 1;
-  padding: 16px;
-  overflow-y: auto;
-  overflow-x: hidden;
-  background: #f5f5f5;
-}
-.msg {
-  margin-bottom: 10px;
-  max-width: 75%;
-  position: relative;
-  touch-action: pan-y;
-}
-.msg.mine { margin-left: auto; text-align: right; }
-.msg::before {
-  content: '↩';
-  position: absolute;
-  left: -26px;
-  top: 50%;
-  transform: translateY(-50%);
-  color: #764ba2;
-  font-size: 18px;
-  opacity: var(--swipe, 0);
-}
-.msg.swipe-ready::before { font-weight: bold; }
-.msg .bubble {
-  display: inline-block;
-  padding: 10px 14px;
-  border-radius: 14px;
-  background: #e0e0e0;
-  text-align: left;
-}
-.msg.mine .bubble { background: #764ba2; color: white; }
-.msg .sender { font-size: 12px; color: #888; margin-bottom: 2px; }
-.msg img, .msg video { max-width: 220px; border-radius: 10px; display: block; margin-top: 4px; }
-.system-msg { text-align: center; color: #999; font-size: 13px; margin: 8px 0; }
-
-/* Message ke andar quoted reply */
-.quoted {
-  border-left: 3px solid #764ba2;
-  background: rgba(0,0,0,0.08);
-  padding: 4px 8px;
-  border-radius: 6px;
-  margin-bottom: 6px;
-  font-size: 12px;
-  cursor: pointer;
-}
-.msg.mine .quoted { border-left-color: white; background: rgba(255,255,255,0.2); }
-.quoted .q-name { font-weight: bold; }
-
-/* Highlight jab quoted message pe click ho */
-.msg.highlight .bubble { outline: 3px solid #ffd54f; }
-
-/* Typing indicator */
-#typing-indicator {
-  height: 20px;
-  padding: 0 16px;
-  font-size: 12px;
-  color: #764ba2;
-  font-style: italic;
-  background: #f5f5f5;
-}
-
-/* Reply preview (input ke upar) */
-#reply-preview {
-  display: none;
-  padding: 8px 12px;
-  background: #efe6f7;
-  border-top: 1px solid #ddd;
-  font-size: 13px;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-}
-#reply-preview .rp-text {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  flex: 1;
-}
-#reply-preview button {
-  border: none;
-  background: transparent;
-  font-size: 16px;
-  cursor: pointer;
-  color: #764ba2;
-}
-
-#input-area {
-  display: flex;
-  padding: 12px;
-  border-top: 1px solid #ddd;
-  gap: 8px;
-  align-items: center;
-}
-#input-area input[type=text] {
-  flex: 1;
-  padding: 10px;
-  border: 2px solid #ddd;
-  border-radius: 20px;
-  font-size: 14px;
-}
-#input-area button, #input-area label {
-  background: #764ba2;
-  color: white;
-  border: none;
-  border-radius: 50%;
-  width: 42px;
-  height: 42px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  font-size: 18px;
-  flex-shrink: 0;
-}
-#input-area input[type=file] { display: none; }
-
-/* Overlays (password box + history) */
-.overlay {
-  display: none;
-  position: absolute;
-  inset: 0;
-  background: rgba(0,0,0,0.5);
-  z-index: 10;
-  align-items: center;
-  justify-content: center;
-}
-.modal-box {
-  background: white;
-  width: 300px;
-  padding: 20px;
-  border-radius: 14px;
-  text-align: center;
-}
-.modal-box h3 { color: #764ba2; margin-bottom: 8px; }
-.modal-box p { font-size: 12px; color: #777; margin-bottom: 8px; }
-.modal-box input {
-  width: 100%;
-  padding: 10px;
-  margin: 6px 0;
-  border: 2px solid #ddd;
-  border-radius: 8px;
-  font-size: 14px;
-}
-#modal-error { color: #d32f2f; font-size: 12px; min-height: 16px; margin: 4px 0; }
-.modal-actions { display: flex; gap: 8px; margin-top: 6px; }
-.modal-actions button {
-  flex: 1;
-  padding: 10px;
-  border: none;
-  border-radius: 8px;
-  cursor: pointer;
-  font-size: 14px;
-}
-#modal-cancel { background: #e0e0e0; }
-#modal-ok { background: #764ba2; color: white; }
-
-.history-box {
-  background: white;
-  width: 100%;
-  height: 100%;
-  display: flex;
-  flex-direction: column;
-}
-.history-head {
-  background: #764ba2;
-  color: white;
-  padding: 14px 16px;
-  font-weight: bold;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-.history-head button {
-  border: none;
-  background: transparent;
-  color: white;
-  font-size: 16px;
-  cursor: pointer;
-}
-#history-list { flex: 1; overflow-y: auto; padding: 12px 16px; background: #f5f5f5; }
-.hist-item { margin-bottom: 10px; font-size: 14px; }
-.hist-item .h-name { font-weight: bold; color: #764ba2; }
-.hist-item .h-time { font-size: 11px; color: #999; margin-left: 6px; }
-.hist-item img, .hist-item video { max-width: 200px; border-radius: 10px; display: block; margin-top: 4px; }
-.hist-empty { text-align: center; color: #999; margin-top: 30px; font-size: 14px; }
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;font-family:system-ui,sans-serif;background:#111;color:#eee}
+button{cursor:pointer;border:0;border-radius:8px;padding:8px 12px;background:#2d7ff9;color:#fff;font-size:15px}
+input{padding:10px;border-radius:8px;border:1px solid #444;background:#222;color:#eee;font-size:16px}
+#join-screen{height:100%;display:flex;flex-direction:column;gap:12px;align-items:center;justify-content:center;padding:20px}
+#join-screen input{width:100%;max-width:320px}
+#chat-screen,#history-panel{display:none;flex-direction:column;height:100%;height:100dvh}
+#history-panel{position:fixed;inset:0;background:#111;z-index:20}
+.topbar{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:10px;background:#1c1c1c}
+.list{flex:1;overflow-y:auto;padding:10px;display:flex;flex-direction:column;gap:8px}
+.msg,.hist-item{max-width:80%;padding:8px 10px;border-radius:10px;background:#2a2a2a;align-self:flex-start;word-break:break-word;touch-action:pan-y}
+.msg.mine,.hist-item.mine{align-self:flex-end;background:#1f4fa3}
+.msg.highlight,.hist-item.highlight{outline:2px solid #ffd54a}
+.msg.swipe-ready,.hist-item.swipe-ready{outline:2px solid #2d7ff9}
+.name{font-size:12px;opacity:.7}
+.ts{font-size:10px;opacity:.5;margin-left:6px}
+.quote{border-left:3px solid #2d7ff9;padding:2px 8px;margin-bottom:6px;background:#0003;border-radius:4px;cursor:pointer}
+.quote b{display:block;font-size:12px}
+.quote span{font-size:13px;opacity:.8}
+.msg img,.msg video,.hist-item img,.hist-item video{max-width:100%;border-radius:8px;display:block}
+.msg a,.hist-item a{color:#8ab4ff;font-size:13px}
+.system-msg,.hist-empty{align-self:center;font-size:12px;opacity:.6}
+#typing-indicator{height:18px;padding:0 12px;font-size:12px;opacity:.7}
+.reply-preview{display:none;align-items:center;justify-content:space-between;padding:6px 10px;background:#222;font-size:13px}
+.reply-preview button{background:none;padding:2px 8px}
+.inputbar{display:flex;gap:6px;padding:8px;padding-bottom:calc(8px + env(safe-area-inset-bottom,0px));background:#1c1c1c}
+.inputbar input[type=text]{flex:1;min-width:0}
+.attach{display:flex;align-items:center;padding:0 10px;background:#333;border-radius:8px;cursor:pointer}
+.attach input{display:none}
+#modal{display:none;position:fixed;inset:0;background:#000b;align-items:center;justify-content:center;z-index:30;padding:20px}
+.box{background:#222;padding:18px;border-radius:12px;width:100%;max-width:340px;display:flex;flex-direction:column;gap:10px}
+#modal-note{font-size:13px;opacity:.75}
+#modal-error{color:#ff6b6b;font-size:13px;min-height:16px}
+.row{display:flex;gap:8px;justify-content:flex-end}
 </style>
 </head>
 <body>
 
 <div id="join-screen">
-  <h1>Join Chat</h1>
-  <input type="text" id="name-input" placeholder="Your Name">
-  <input type="text" id="room-input" placeholder="Room Code">
-  <button onclick="joinRoom()">Join Room</button>
+  <h2>Chat Room</h2>
+  <input id="name-input" placeholder="Your name">
+  <input id="room-input" placeholder="Room code">
+  <button onclick="joinRoom()">Join</button>
 </div>
 
 <div id="chat-screen">
-  <div id="chat-header">
-    <span>Room: <span id="room-label"></span></span>
-    <span id="header-actions">
-      <button id="perm-btn">📌 Make permanent</button>
-      <button id="heart-btn" title="">❤️</button>
+  <div class="topbar">
+    <span>Room: <b id="room-label"></b></span>
+    <span>
+      <button id="perm-btn" style="display:none">Make permanent</button>
+      <button id="heart-btn" style="display:none;background:none;font-size:20px">❤️</button>
     </span>
   </div>
-  <div id="messages"></div>
+  <div id="messages" class="list"></div>
   <div id="typing-indicator"></div>
-  <div id="reply-preview">
-    <div class="rp-text" id="rp-text"></div>
-    <button onclick="cancelReply()">✖</button>
+  <div id="reply-preview" class="reply-preview">
+    <span id="rp-text"></span><button onclick="cancelReply()">✕</button>
   </div>
-  <div id="input-area">
-    <label for="media-input">📎</label>
-    <input type="file" id="media-input" accept="image/*,video/*">
+  <div class="inputbar">
+    <label class="attach">📎<input type="file" id="media-input"></label>
     <input type="text" id="msg-input" placeholder="Type a message">
-    <button onclick="sendMessage()">➤</button>
+    <button onclick="sendMessage()">Send</button>
   </div>
+</div>
 
-  <!-- Password box -->
-  <div id="modal" class="overlay">
-    <div class="modal-box">
-      <h3 id="modal-title"></h3>
-      <p id="modal-note"></p>
-      <input type="password" id="modal-pass" placeholder="Password">
-      <input type="password" id="modal-pass2" placeholder="Password dobara likho">
-      <div id="modal-error"></div>
-      <div class="modal-actions">
-        <button id="modal-cancel">Cancel</button>
-        <button id="modal-ok">OK</button>
-      </div>
+<div id="modal">
+  <div class="box">
+    <h3 id="modal-title"></h3>
+    <div id="modal-note"></div>
+    <input type="password" id="modal-pass" placeholder="Password">
+    <input type="password" id="modal-pass2" placeholder="Confirm password">
+    <div id="modal-error"></div>
+    <div class="row">
+      <button id="modal-cancel" style="background:#444">Cancel</button>
+      <button id="modal-ok">OK</button>
     </div>
   </div>
+</div>
 
-  <!-- Chat history -->
-  <div id="history-panel" class="overlay">
-    <div class="history-box">
-      <div class="history-head">
-        <span>❤️ Chat history</span>
-        <button onclick="closeHistory()">✖</button>
-      </div>
-      <div id="history-list"></div>
-    </div>
+<div id="history-panel">
+  <div class="topbar">
+    <b>🔒 Secret chat</b>
+    <button onclick="closeHistory()">Close</button>
+  </div>
+  <div id="history-list" class="list"></div>
+  <div id="secret-reply-preview" class="reply-preview">
+    <span id="secret-rp-text"></span><button onclick="cancelSecretReply()">✕</button>
+  </div>
+  <div class="inputbar">
+    <label class="attach">📎<input type="file" id="secret-media-input"></label>
+    <input type="text" id="secret-msg-input" placeholder="Secret message">
+    <button onclick="sendSecretMessage()">Send</button>
   </div>
 </div>
 
@@ -336,10 +104,19 @@ body.swiping { user-select: none; -webkit-user-select: none; }
 <script>
 const socket = io();
 let myName = "";
-let replyingTo = null;      // { id, name, preview }
+let replyingTo = null;
+let secretReplyingTo = null;
 let typingTimeout = null;
 let isTyping = false;
 const typingUsers = new Set();
+
+function escapeHtml(s) {
+  return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+function scrollDown() {
+  const b = document.getElementById('messages');
+  b.scrollTop = b.scrollHeight;
+}
 
 function joinRoom() {
   const name = document.getElementById('name-input').value.trim();
@@ -364,34 +141,18 @@ function sendMessage() {
 
 /* ---------- Typing indicator ---------- */
 const msgInput = document.getElementById('msg-input');
-
 msgInput.addEventListener('input', () => {
-  if (!isTyping) {
-    isTyping = true;
-    socket.emit('typing');
-  }
+  if (!isTyping) { isTyping = true; socket.emit('typing'); }
   clearTimeout(typingTimeout);
   typingTimeout = setTimeout(stopTyping, 1500);
 });
-
+msgInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') sendMessage(); });
 function stopTyping() {
   clearTimeout(typingTimeout);
-  if (isTyping) {
-    isTyping = false;
-    socket.emit('stop-typing');
-  }
+  if (isTyping) { isTyping = false; socket.emit('stop-typing'); }
 }
-
-socket.on('typing', ({ name }) => {
-  typingUsers.add(name);
-  updateTypingText();
-});
-
-socket.on('stop-typing', ({ name }) => {
-  typingUsers.delete(name);
-  updateTypingText();
-});
-
+socket.on('typing', ({ name }) => { typingUsers.add(name); updateTypingText(); });
+socket.on('stop-typing', ({ name }) => { typingUsers.delete(name); updateTypingText(); });
 function updateTypingText() {
   const el = document.getElementById('typing-indicator');
   const names = Array.from(typingUsers);
@@ -400,19 +161,17 @@ function updateTypingText() {
   else el.innerText = names.join(', ') + ' are typing...';
 }
 
-/* ---------- Reply ---------- */
+/* ---------- Reply (normal chat) ---------- */
 function startReply(id, name, preview) {
   replyingTo = { id, name, preview };
   document.getElementById('rp-text').innerText = 'Replying to ' + name + ': ' + preview;
   document.getElementById('reply-preview').style.display = 'flex';
   msgInput.focus();
 }
-
 function cancelReply() {
   replyingTo = null;
   document.getElementById('reply-preview').style.display = 'none';
 }
-
 function scrollToMessage(id) {
   const el = document.querySelector('[data-id="' + id + '"]');
   if (!el) return;
@@ -420,79 +179,58 @@ function scrollToMessage(id) {
   el.classList.add('highlight');
   setTimeout(() => el.classList.remove('highlight'), 1500);
 }
-
 function buildQuotedHtml(replyTo) {
   if (!replyTo) return '';
-  return '<div class="quoted" onclick="scrollToMessage(\'' + replyTo.id + '\')">' +
-    '<div class="q-name">' + escapeHtml(replyTo.name) + '</div>' +
-    '<div>' + escapeHtml(replyTo.preview) + '</div></div>';
+  return '<div class="quote" onclick="scrollToMessage(\'' + escapeHtml(replyTo.id) + '\')">' +
+    '<b>' + escapeHtml(replyTo.name) + '</b>' +
+    '<span>' + escapeHtml(replyTo.preview) + '</span></div>';
 }
 
-/* ---------- Swipe to reply ---------- */
-const messagesBox = document.getElementById('messages');
-const SWIPE_TRIGGER = 40;
-const SWIPE_MAX = 56;
-let swipe = null;
-
-messagesBox.addEventListener('pointerdown', (e) => {
-  const el = e.target.closest('.msg');
-  if (!el || !el._reply) return;
-  if (e.target.closest('a, video')) return;
-  swipe = { el, id: e.pointerId, startX: e.clientX, startY: e.clientY, dx: 0, active: false };
-});
-
-window.addEventListener('pointermove', (e) => {
-  if (!swipe || e.pointerId !== swipe.id) return;
-  const dx = e.clientX - swipe.startX;
-  const dy = e.clientY - swipe.startY;
-
-  if (!swipe.active) {
-    // Upar-neeche scroll ho raha hai to swipe cancel
-    if (Math.abs(dy) > 10 && Math.abs(dy) > Math.abs(dx)) { swipe = null; return; }
-    if (dx > 10 && dx > Math.abs(dy)) {
-      swipe.active = true;
-      document.body.classList.add('swiping');
-    } else {
-      return;
+/* ---------- Swipe to reply (normal + secret) ---------- */
+function attachSwipe(container, onTrigger) {
+  const SWIPE_TRIGGER = 40, SWIPE_MAX = 56;
+  let sw = null;
+  container.addEventListener('pointerdown', (e) => {
+    const el = e.target.closest('.msg, .hist-item');
+    if (!el || !el._reply) return;
+    if (e.target.closest('a, video')) return;
+    sw = { el, id: e.pointerId, startX: e.clientX, startY: e.clientY, dx: 0, active: false };
+  });
+  window.addEventListener('pointermove', (e) => {
+    if (!sw || sw.el.parentNode !== container || e.pointerId !== sw.id) return;
+    const dx = e.clientX - sw.startX;
+    const dy = e.clientY - sw.startY;
+    if (!sw.active) {
+      if (Math.abs(dy) > 10 && Math.abs(dy) > Math.abs(dx)) { sw = null; return; }
+      if (dx > 10 && dx > Math.abs(dy)) { sw.active = true; }
+      else return;
     }
+    const move = Math.max(0, Math.min(dx, SWIPE_MAX));
+    sw.dx = dx;
+    sw.el.style.transition = 'none';
+    sw.el.style.transform = 'translateX(' + move + 'px)';
+    sw.el.classList.toggle('swipe-ready', dx >= SWIPE_TRIGGER);
+  });
+  function endSwipe(e) {
+    if (!sw || sw.el.parentNode !== container || e.pointerId !== sw.id) return;
+    const s = sw; sw = null;
+    s.el.style.transition = 'transform 0.2s';
+    s.el.style.transform = '';
+    s.el.classList.remove('swipe-ready');
+    if (s.active && s.dx >= SWIPE_TRIGGER) onTrigger(s.el._reply);
   }
-
-  const move = Math.max(0, Math.min(dx, SWIPE_MAX));
-  swipe.dx = dx;
-  swipe.el.style.transition = 'none';
-  swipe.el.style.transform = 'translateX(' + move + 'px)';
-  swipe.el.style.setProperty('--swipe', Math.min(1, move / SWIPE_TRIGGER));
-  swipe.el.classList.toggle('swipe-ready', dx >= SWIPE_TRIGGER);
-});
-
-function endSwipe(e) {
-  if (!swipe || e.pointerId !== swipe.id) return;
-  const s = swipe;
-  swipe = null;
-  document.body.classList.remove('swiping');
-  s.el.style.transition = 'transform 0.2s';
-  s.el.style.transform = '';
-  s.el.style.setProperty('--swipe', 0);
-  s.el.classList.remove('swipe-ready');
-  if (s.active && s.dx >= SWIPE_TRIGGER) {
-    startReply(s.el._reply.id, s.el._reply.name, s.el._reply.preview);
-  }
+  window.addEventListener('pointerup', endSwipe);
+  window.addEventListener('pointercancel', endSwipe);
 }
-window.addEventListener('pointerup', endSwipe);
-window.addEventListener('pointercancel', endSwipe);
+attachSwipe(document.getElementById('messages'), (r) => startReply(r.id, r.name, r.preview));
+attachSwipe(document.getElementById('history-list'), (r) => startSecretReply(r));
 
-/* ---------- Media upload ---------- */
-msgInput.addEventListener('keypress', (e) => {
-  if (e.key === 'Enter') sendMessage();
-});
-
+/* ---------- Normal media upload ---------- */
 document.getElementById('media-input').addEventListener('change', async (e) => {
   const file = e.target.files[0];
   if (!file) return;
-
   const formData = new FormData();
   formData.append('file', file);
-
   try {
     const res = await fetch('/upload', { method: 'POST', body: formData });
     const result = await res.json();
@@ -500,25 +238,18 @@ document.getElementById('media-input').addEventListener('change', async (e) => {
       socket.emit('media-message', { url: result.url, type: result.type, replyTo: replyingTo });
       cancelReply();
     }
-  } catch (err) {
-    alert('Upload failed, please try again');
-  }
+  } catch (err) { alert('Upload failed, please try again'); }
   e.target.value = '';
 });
 
-/* ---------- Incoming messages ---------- */
 socket.on('chat-message', ({ id, name, message, replyTo }) => {
-  typingUsers.delete(name);
-  updateTypingText();
+  typingUsers.delete(name); updateTypingText();
   addTextMessage(id, name, message, name === myName, replyTo);
 });
-
 socket.on('media-message', ({ id, name, url, type, replyTo }) => {
-  typingUsers.delete(name);
-  updateTypingText();
+  typingUsers.delete(name); updateTypingText();
   addMediaMessage(id, name, url, type, name === myName, replyTo);
 });
-
 socket.on('system-message', (text) => {
   const div = document.createElement('div');
   div.className = 'system-msg';
@@ -533,41 +264,39 @@ function addTextMessage(id, name, text, mine, replyTo) {
   wrap.setAttribute('data-id', id);
   wrap._reply = { id, name, preview: text.length > 50 ? text.slice(0, 50) + '...' : text };
   wrap.innerHTML =
-    '<div class="sender">' + (mine ? '' : escapeHtml(name)) + '</div>' +
-    '<div class="bubble">' + buildQuotedHtml(replyTo) + escapeHtml(text) + '</div>';
+    '<div class="name">' + (mine ? '' : escapeHtml(name)) + '</div>' +
+    '<div>' + buildQuotedHtml(replyTo) + escapeHtml(text) + '</div>';
   document.getElementById('messages').appendChild(wrap);
   scrollDown();
 }
-
+function mediaHtml(url, type) {
+  type = type || '';
+  let tag = '', label = '📎 File';
+  if (type.startsWith('image/')) { tag = '<img src="' + escapeHtml(url) + '">'; label = '📷 Photo'; }
+  else if (type.startsWith('video/')) { tag = '<video controls src="' + escapeHtml(url) + '"></video>'; label = '🎥 Video'; }
+  tag += '<a href="' + escapeHtml(url) + '" target="_blank" download>Download</a>';
+  return { tag, label };
+}
 function addMediaMessage(id, name, url, type, mine, replyTo) {
   const wrap = document.createElement('div');
   wrap.className = 'msg' + (mine ? ' mine' : '');
   wrap.setAttribute('data-id', id);
-  let mediaTag = '';
-  let label = '📎 File';
-  if (type.startsWith('image/')) {
-    mediaTag = '<img src="' + url + '">';
-    label = '📷 Photo';
-  } else if (type.startsWith('video/')) {
-    mediaTag = '<video src="' + url + '" controls></video>';
-    label = '🎥 Video';
-  }
-  wrap._reply = { id, name, preview: label };
+  const m = mediaHtml(url, type);
+  wrap._reply = { id, name, preview: m.label };
   wrap.innerHTML =
-    '<div class="sender">' + (mine ? '' : escapeHtml(name)) + '</div>' +
-    '<div class="bubble">' + buildQuotedHtml(replyTo) + mediaTag +
-    '<br><a href="' + url + '" download>Download</a></div>';
+    '<div class="name">' + (mine ? '' : escapeHtml(name)) + '</div>' +
+    '<div>' + buildQuotedHtml(replyTo) + m.tag + '</div>';
   document.getElementById('messages').appendChild(wrap);
   scrollDown();
 }
 
-/* ---------- Permanent room + hidden history ---------- */
+/* ---------- Permanent room + password modal ---------- */
 const permBtn = document.getElementById('perm-btn');
 const heartBtn = document.getElementById('heart-btn');
 const modal = document.getElementById('modal');
 const modalPass = document.getElementById('modal-pass');
 const modalPass2 = document.getElementById('modal-pass2');
-let modalMode = null; // 'make' ya 'unlock'
+let modalMode = null;
 
 socket.on('room-info', ({ permanent }) => {
   permBtn.style.display = permanent ? 'none' : 'inline-block';
@@ -577,13 +306,12 @@ socket.on('room-info', ({ permanent }) => {
 
 function openModal(mode) {
   modalMode = mode;
-  modalPass.value = '';
-  modalPass2.value = '';
+  modalPass.value = ''; modalPass2.value = '';
   setModalError('');
   if (mode === 'make') {
     document.getElementById('modal-title').innerText = 'Make room permanent';
     document.getElementById('modal-note').innerText =
-      'Ek password set karo. Is room ki chat history hamesha save rahegi. Password baad mein badal nahi sakte, yaad rakhna.';
+      'Ek password set karo. Is room ki secret chat hamesha save rahegi. Password baad mein badal nahi sakte, yaad rakhna.';
     modalPass2.style.display = 'block';
   } else {
     document.getElementById('modal-title').innerText = 'Enter password';
@@ -593,17 +321,12 @@ function openModal(mode) {
   modal.style.display = 'flex';
   modalPass.focus();
 }
-
 function closeModal() {
   modal.style.display = 'none';
   modalMode = null;
-  modalPass.value = '';
-  modalPass2.value = '';
+  modalPass.value = ''; modalPass2.value = '';
 }
-
-function setModalError(text) {
-  document.getElementById('modal-error').innerText = text;
-}
+function setModalError(text) { document.getElementById('modal-error').innerText = text; }
 
 function submitModal() {
   const pass = modalPass.value;
@@ -616,101 +339,115 @@ function submitModal() {
     socket.emit('unlock-history', { password: pass });
   }
 }
-
 permBtn.addEventListener('click', () => openModal('make'));
 document.getElementById('modal-ok').addEventListener('click', submitModal);
 document.getElementById('modal-cancel').addEventListener('click', closeModal);
 [modalPass, modalPass2].forEach((el) => {
   el.addEventListener('keypress', (e) => { if (e.key === 'Enter') submitModal(); });
 });
-
 socket.on('permanent-error', (text) => setModalError(text));
 socket.on('history-error', (text) => setModalError(text));
 
-// Dil wale emoji ko hold karne par password box khulega
 let holdTimer = null;
 heartBtn.addEventListener('pointerdown', () => {
   clearTimeout(holdTimer);
-  holdTimer = setTimeout(() => {
-    holdTimer = null;
-    openModal('unlock');
-  }, 700);
+  holdTimer = setTimeout(() => { holdTimer = null; openModal('unlock'); }, 700);
 });
 ['pointerup', 'pointerleave', 'pointercancel'].forEach((ev) => {
   heartBtn.addEventListener(ev, () => clearTimeout(holdTimer));
 });
 heartBtn.addEventListener('contextmenu', (e) => e.preventDefault());
 
+/* ---------- Secret chat (alag chat, apna typing box) ---------- */
+const historyPanel = document.getElementById('history-panel');
+const historyList = document.getElementById('history-list');
+const secretMsgInput = document.getElementById('secret-msg-input');
+
 socket.on('history', (items) => {
   closeModal();
-  const list = document.getElementById('history-list');
-  list.innerHTML = '';
-  if (!items.length) {
+  historyList.innerHTML = '';
+  if (!items || !items.length) {
     const empty = document.createElement('div');
     empty.className = 'hist-empty';
-    empty.innerText = 'Abhi tak koi saved message nahi hai';
-    list.appendChild(empty);
+    empty.innerText = 'Abhi tak koi secret message nahi hai, pehla bhejo';
+    historyList.appendChild(empty);
+  } else {
+    items.forEach(addSecretItem);
   }
-  items.forEach((m) => {
-    const row = document.createElement('div');
-    row.className = 'hist-item';
+  historyPanel.style.display = 'flex';
+  historyList.scrollTop = historyList.scrollHeight;
+  secretMsgInput.focus();
+});
 
-    const head = document.createElement('div');
-    const nameEl = document.createElement('span');
-    nameEl.className = 'h-name';
-    nameEl.innerText = m.name || '';
-    const timeEl = document.createElement('span');
-    timeEl.className = 'h-time';
-    timeEl.innerText = m.ts ? new Date(m.ts).toLocaleString() : '';
-    head.appendChild(nameEl);
-    head.appendChild(timeEl);
-    row.appendChild(head);
+socket.on('secret-message', (m) => {
+  if (historyPanel.style.display !== 'flex') return;
+  const empty = historyList.querySelector('.hist-empty');
+  if (empty) empty.remove();
+  addSecretItem(m);
+  historyList.scrollTop = historyList.scrollHeight;
+});
 
-    if (m.kind === 'media' && m.url) {
-      const type = m.type || '';
-      let el = null;
-      if (type.startsWith('image/')) {
-        el = document.createElement('img');
-        el.src = m.url;
-      } else if (type.startsWith('video/')) {
-        el = document.createElement('video');
-        el.src = m.url;
-        el.controls = true;
-      }
-      if (el) {
-        el.onerror = () => {
-          const note = document.createElement('div');
-          note.innerText = '(file ab available nahi hai)';
-          note.style.color = '#999';
-          el.replaceWith(note);
-        };
-        row.appendChild(el);
-      }
-    } else {
-      const text = document.createElement('div');
-      text.innerText = m.message || '';
-      row.appendChild(text);
+function addSecretItem(m) {
+  const row = document.createElement('div');
+  row.className = 'hist-item' + (m.name === myName ? ' mine' : '');
+  row.setAttribute('data-id', m.id);
+
+  let label = m.message || '';
+  let body = '';
+  if (m.kind === 'media' && m.url) {
+    const x = mediaHtml(m.url, m.type);
+    body = x.tag; label = x.label;
+  } else {
+    body = escapeHtml(m.message || '');
+  }
+  row.innerHTML =
+    '<div class="name">' + escapeHtml(m.name || '') +
+    '<span class="ts">' + (m.ts ? new Date(m.ts).toLocaleString() : '') + '</span></div>' +
+    '<div>' + buildQuotedHtml(m.replyTo) + body + '</div>';
+  row._reply = { id: m.id, name: m.name, preview: label.length > 50 ? label.slice(0, 50) + '...' : label };
+  historyList.appendChild(row);
+}
+
+function startSecretReply(r) {
+  secretReplyingTo = r;
+  document.getElementById('secret-rp-text').innerText = 'Replying to ' + r.name + ': ' + r.preview;
+  document.getElementById('secret-reply-preview').style.display = 'flex';
+  secretMsgInput.focus();
+}
+function cancelSecretReply() {
+  secretReplyingTo = null;
+  document.getElementById('secret-reply-preview').style.display = 'none';
+}
+
+function sendSecretMessage() {
+  const text = secretMsgInput.value.trim();
+  if (!text) return;
+  socket.emit('secret-message', { message: text, replyTo: secretReplyingTo });
+  secretMsgInput.value = '';
+  cancelSecretReply();
+}
+secretMsgInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') sendSecretMessage(); });
+
+document.getElementById('secret-media-input').addEventListener('change', async (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  const formData = new FormData();
+  formData.append('file', file);
+  try {
+    const res = await fetch('/upload', { method: 'POST', body: formData });
+    const result = await res.json();
+    if (result.url) {
+      socket.emit('secret-media-message', { url: result.url, type: result.type, replyTo: secretReplyingTo });
+      cancelSecretReply();
     }
-    list.appendChild(row);
-  });
-  document.getElementById('history-panel').style.display = 'flex';
-  list.scrollTop = list.scrollHeight;
+  } catch (err) { alert('Upload failed, please try again'); }
+  e.target.value = '';
 });
 
 function closeHistory() {
-  document.getElementById('history-panel').style.display = 'none';
-  document.getElementById('history-list').innerHTML = '';
-}
-
-function scrollDown() {
-  const box = document.getElementById('messages');
-  box.scrollTop = box.scrollHeight;
-}
-
-function escapeHtml(str) {
-  const div = document.createElement('div');
-  div.innerText = str;
-  return div.innerHTML;
+  historyPanel.style.display = 'none';
+  historyList.innerHTML = '';
+  cancelSecretReply();
 }
 </script>
 </body>
