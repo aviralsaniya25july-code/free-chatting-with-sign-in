@@ -12,7 +12,7 @@ const io = socketIo(server);
 const uploadDir = path.join(__dirname, 'public', 'uploads');
 if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
 
-const upload = multer({ dest: uploadDir, limits: { fileSize: 10 * 1024 * 1024 } });
+const upload = multer({ dest: uploadDir, limits: { fileSize: 100 * 1024 * 1024 } });
 
 app.use(express.static(path.join(__dirname, 'public')));
 
