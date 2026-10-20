@@ -1,6 +1,3 @@
-यह तुम्हारा पूरा अपडेटेड server.js है, इसमें secret chat के लिए अलग इवेंट्स जोड़े हैं — secret-message भेजने के लिए और secret-history पुराने secret मैसेज लोड करने के लिए। secret chat सिर्फ उसी को मिलता है जिसने सही पासवर्ड से history unlock किया हो:
-
-js
 const express = require('express');
 const http = require('http');
 const socketIo = require('socket.io');
