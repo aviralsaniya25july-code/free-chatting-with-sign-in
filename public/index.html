@@ -14,6 +14,7 @@ body {
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
 }
 body.swiping { user-select: none; -webkit-user-select: none; }
+
 #join-screen {
   background: white;
   padding: 40px;
@@ -42,6 +43,7 @@ body.swiping { user-select: none; -webkit-user-select: none; }
   font-size: 16px;
   cursor: pointer;
 }
+
 #chat-screen {
   display: none;
   position: relative;
@@ -86,7 +88,9 @@ body.swiping { user-select: none; -webkit-user-select: none; }
   -webkit-user-select: none;
   -webkit-touch-callout: none;
 }
-#messages {
+
+/* Messages area (normal chat aur secret chat dono ke liye) */
+#messages, #history-list {
   flex: 1;
   padding: 16px;
   overflow-y: auto;
@@ -101,7 +105,7 @@ body.swiping { user-select: none; -webkit-user-select: none; }
 }
 .msg.mine { margin-left: auto; text-align: right; }
 .msg::before {
-  content: '↩';
+  content: '\21A9';
   position: absolute;
   left: -26px;
   top: 50%;
@@ -117,11 +121,14 @@ body.swiping { user-select: none; -webkit-user-select: none; }
   border-radius: 14px;
   background: #e0e0e0;
   text-align: left;
+  word-break: break-word;
 }
 .msg.mine .bubble { background: #764ba2; color: white; }
 .msg .sender { font-size: 12px; color: #888; margin-bottom: 2px; }
+.msg .time { font-size: 10px; color: #aaa; margin-bottom: 2px; }
 .msg img, .msg video { max-width: 220px; border-radius: 10px; display: block; margin-top: 4px; }
 .system-msg { text-align: center; color: #999; font-size: 13px; margin: 8px 0; }
+.hist-empty { text-align: center; color: #999; margin-top: 30px; font-size: 14px; }
 
 /* Message ke andar quoted reply */
 .quoted {
@@ -150,7 +157,7 @@ body.swiping { user-select: none; -webkit-user-select: none; }
 }
 
 /* Reply preview (input ke upar) */
-#reply-preview {
+.reply-preview {
   display: none;
   padding: 8px 12px;
   background: #efe6f7;
@@ -160,13 +167,13 @@ body.swiping { user-select: none; -webkit-user-select: none; }
   justify-content: space-between;
   gap: 8px;
 }
-#reply-preview .rp-text {
+.reply-preview .rp-text {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   flex: 1;
 }
-#reply-preview button {
+.reply-preview button {
   border: none;
   background: transparent;
   font-size: 16px;
@@ -174,21 +181,24 @@ body.swiping { user-select: none; -webkit-user-select: none; }
   color: #764ba2;
 }
 
-#input-area {
+/* Input area (normal aur secret dono) */
+.input-row {
   display: flex;
   padding: 12px;
   border-top: 1px solid #ddd;
   gap: 8px;
   align-items: center;
+  background: white;
 }
-#input-area input[type=text] {
+.input-row input[type=text] {
   flex: 1;
+  min-width: 0;
   padding: 10px;
   border: 2px solid #ddd;
   border-radius: 20px;
   font-size: 14px;
 }
-#input-area button, #input-area label {
+.input-row button, .input-row label {
   background: #764ba2;
   color: white;
   border: none;
@@ -202,9 +212,9 @@ body.swiping { user-select: none; -webkit-user-select: none; }
   font-size: 18px;
   flex-shrink: 0;
 }
-#input-area input[type=file] { display: none; }
+.input-row input[type=file] { display: none; }
 
-/* Overlays (password box + history) */
+/* Overlays (password box + secret chat) */
 .overlay {
   display: none;
   position: absolute;
@@ -244,15 +254,15 @@ body.swiping { user-select: none; -webkit-user-select: none; }
 #modal-cancel { background: #e0e0e0; }
 #modal-ok { background: #764ba2; color: white; }
 
-.history-box {
+.secret-box {
   background: white;
   width: 100%;
   height: 100%;
   display: flex;
   flex-direction: column;
 }
-.history-head {
-  background: #764ba2;
+.secret-head {
+  background: #4a2468;
   color: white;
   padding: 14px 16px;
   font-weight: bold;
@@ -260,19 +270,13 @@ body.swiping { user-select: none; -webkit-user-select: none; }
   justify-content: space-between;
   align-items: center;
 }
-.history-head button {
+.secret-head button {
   border: none;
   background: transparent;
   color: white;
   font-size: 16px;
   cursor: pointer;
 }
-#history-list { flex: 1; overflow-y: auto; padding: 12px 16px; background: #f5f5f5; }
-.hist-item { margin-bottom: 10px; font-size: 14px; }
-.hist-item .h-name { font-weight: bold; color: #764ba2; }
-.hist-item .h-time { font-size: 11px; color: #999; margin-left: 6px; }
-.hist-item img, .hist-item video { max-width: 200px; border-radius: 10px; display: block; margin-top: 4px; }
-.hist-empty { text-align: center; color: #999; margin-top: 30px; font-size: 14px; }
 </style>
 </head>
 <body>
@@ -288,21 +292,23 @@ body.swiping { user-select: none; -webkit-user-select: none; }
   <div id="chat-header">
     <span>Room: <span id="room-label"></span></span>
     <span id="header-actions">
-      <button id="perm-btn">📌 Make permanent</button>
-      <button id="heart-btn" title="">❤️</button>
+      <button id="perm-btn">&#128204; Make permanent</button>
+      <button id="heart-btn">&#10084;&#65039;</button>
     </span>
   </div>
+
+  <!-- Normal chat -->
   <div id="messages"></div>
   <div id="typing-indicator"></div>
-  <div id="reply-preview">
+  <div id="reply-preview" class="reply-preview">
     <div class="rp-text" id="rp-text"></div>
-    <button onclick="cancelReply()">✖</button>
+    <button onclick="cancelReply()">&#10006;</button>
   </div>
-  <div id="input-area">
-    <label for="media-input">📎</label>
+  <div id="input-area" class="input-row">
+    <label for="media-input">&#128206;</label>
     <input type="file" id="media-input" accept="image/*,video/*">
     <input type="text" id="msg-input" placeholder="Type a message">
-    <button onclick="sendMessage()">➤</button>
+    <button onclick="sendMessage()">&#10148;</button>
   </div>
 
   <!-- Password box -->
@@ -320,14 +326,24 @@ body.swiping { user-select: none; -webkit-user-select: none; }
     </div>
   </div>
 
-  <!-- Chat history -->
+  <!-- Secret chat (apna alag chat, hamesha save hota hai) -->
   <div id="history-panel" class="overlay">
-    <div class="history-box">
-      <div class="history-head">
-        <span>❤️ Chat history</span>
-        <button onclick="closeHistory()">✖</button>
+    <div class="secret-box">
+      <div class="secret-head">
+        <span>&#10084;&#65039; Secret chat</span>
+        <button onclick="closeHistory()">&#10006;</button>
       </div>
       <div id="history-list"></div>
+      <div id="secret-reply-preview" class="reply-preview">
+        <div class="rp-text" id="secret-rp-text"></div>
+        <button onclick="cancelSecretReply()">&#10006;</button>
+      </div>
+      <div class="input-row">
+        <label for="secret-media-input">&#128206;</label>
+        <input type="file" id="secret-media-input" accept="image/*,video/*">
+        <input type="text" id="secret-msg-input" placeholder="Secret message">
+        <button onclick="sendSecretMessage()">&#10148;</button>
+      </div>
     </div>
   </div>
 </div>
@@ -336,7 +352,8 @@ body.swiping { user-select: none; -webkit-user-select: none; }
 <script>
 const socket = io();
 let myName = "";
-let replyingTo = null;      // { id, name, preview }
+let replyingTo = null;
+let secretReplyingTo = null;
 let typingTimeout = null;
 let isTyping = false;
 const typingUsers = new Set();
@@ -362,35 +379,22 @@ function sendMessage() {
   stopTyping();
 }
 
-/* ---------- Typing indicator ---------- */
+/* ---------- Typing indicator (normal chat) ---------- */
 const msgInput = document.getElementById('msg-input');
 
 msgInput.addEventListener('input', () => {
-  if (!isTyping) {
-    isTyping = true;
-    socket.emit('typing');
-  }
+  if (!isTyping) { isTyping = true; socket.emit('typing'); }
   clearTimeout(typingTimeout);
   typingTimeout = setTimeout(stopTyping, 1500);
 });
 
 function stopTyping() {
   clearTimeout(typingTimeout);
-  if (isTyping) {
-    isTyping = false;
-    socket.emit('stop-typing');
-  }
+  if (isTyping) { isTyping = false; socket.emit('stop-typing'); }
 }
 
-socket.on('typing', ({ name }) => {
-  typingUsers.add(name);
-  updateTypingText();
-});
-
-socket.on('stop-typing', ({ name }) => {
-  typingUsers.delete(name);
-  updateTypingText();
-});
+socket.on('typing', ({ name }) => { typingUsers.add(name); updateTypingText(); });
+socket.on('stop-typing', ({ name }) => { typingUsers.delete(name); updateTypingText(); });
 
 function updateTypingText() {
   const el = document.getElementById('typing-indicator');
@@ -400,7 +404,7 @@ function updateTypingText() {
   else el.innerText = names.join(', ') + ' are typing...';
 }
 
-/* ---------- Reply ---------- */
+/* ---------- Reply (normal chat) ---------- */
 function startReply(id, name, preview) {
   replyingTo = { id, name, preview };
   document.getElementById('rp-text').innerText = 'Replying to ' + name + ': ' + preview;
@@ -428,60 +432,62 @@ function buildQuotedHtml(replyTo) {
     '<div>' + escapeHtml(replyTo.preview) + '</div></div>';
 }
 
-/* ---------- Swipe to reply ---------- */
-const messagesBox = document.getElementById('messages');
-const SWIPE_TRIGGER = 40;
-const SWIPE_MAX = 56;
-let swipe = null;
+/* ---------- Swipe to reply (normal aur secret dono chat ke liye) ---------- */
+function attachSwipe(container, onTrigger) {
+  const SWIPE_TRIGGER = 40;
+  const SWIPE_MAX = 56;
+  let sw = null;
 
-messagesBox.addEventListener('pointerdown', (e) => {
-  const el = e.target.closest('.msg');
-  if (!el || !el._reply) return;
-  if (e.target.closest('a, video')) return;
-  swipe = { el, id: e.pointerId, startX: e.clientX, startY: e.clientY, dx: 0, active: false };
-});
+  container.addEventListener('pointerdown', (e) => {
+    const el = e.target.closest('.msg');
+    if (!el || !el._reply) return;
+    if (e.target.closest('a, video')) return;
+    sw = { el, id: e.pointerId, startX: e.clientX, startY: e.clientY, dx: 0, active: false };
+  });
 
-window.addEventListener('pointermove', (e) => {
-  if (!swipe || e.pointerId !== swipe.id) return;
-  const dx = e.clientX - swipe.startX;
-  const dy = e.clientY - swipe.startY;
+  window.addEventListener('pointermove', (e) => {
+    if (!sw || e.pointerId !== sw.id) return;
+    const dx = e.clientX - sw.startX;
+    const dy = e.clientY - sw.startY;
 
-  if (!swipe.active) {
-    // Upar-neeche scroll ho raha hai to swipe cancel
-    if (Math.abs(dy) > 10 && Math.abs(dy) > Math.abs(dx)) { swipe = null; return; }
-    if (dx > 10 && dx > Math.abs(dy)) {
-      swipe.active = true;
-      document.body.classList.add('swiping');
-    } else {
-      return;
+    if (!sw.active) {
+      // Upar-neeche scroll ho raha hai to swipe cancel
+      if (Math.abs(dy) > 10 && Math.abs(dy) > Math.abs(dx)) { sw = null; return; }
+      if (dx > 10 && dx > Math.abs(dy)) {
+        sw.active = true;
+        document.body.classList.add('swiping');
+      } else {
+        return;
+      }
     }
-  }
 
-  const move = Math.max(0, Math.min(dx, SWIPE_MAX));
-  swipe.dx = dx;
-  swipe.el.style.transition = 'none';
-  swipe.el.style.transform = 'translateX(' + move + 'px)';
-  swipe.el.style.setProperty('--swipe', Math.min(1, move / SWIPE_TRIGGER));
-  swipe.el.classList.toggle('swipe-ready', dx >= SWIPE_TRIGGER);
-});
+    const move = Math.max(0, Math.min(dx, SWIPE_MAX));
+    sw.dx = dx;
+    sw.el.style.transition = 'none';
+    sw.el.style.transform = 'translateX(' + move + 'px)';
+    sw.el.style.setProperty('--swipe', Math.min(1, move / SWIPE_TRIGGER));
+    sw.el.classList.toggle('swipe-ready', dx >= SWIPE_TRIGGER);
+  });
 
-function endSwipe(e) {
-  if (!swipe || e.pointerId !== swipe.id) return;
-  const s = swipe;
-  swipe = null;
-  document.body.classList.remove('swiping');
-  s.el.style.transition = 'transform 0.2s';
-  s.el.style.transform = '';
-  s.el.style.setProperty('--swipe', 0);
-  s.el.classList.remove('swipe-ready');
-  if (s.active && s.dx >= SWIPE_TRIGGER) {
-    startReply(s.el._reply.id, s.el._reply.name, s.el._reply.preview);
+  function endSwipe(e) {
+    if (!sw || e.pointerId !== sw.id) return;
+    const s = sw;
+    sw = null;
+    document.body.classList.remove('swiping');
+    s.el.style.transition = 'transform 0.2s';
+    s.el.style.transform = '';
+    s.el.style.setProperty('--swipe', 0);
+    s.el.classList.remove('swipe-ready');
+    if (s.active && s.dx >= SWIPE_TRIGGER) onTrigger(s.el._reply);
   }
+  window.addEventListener('pointerup', endSwipe);
+  window.addEventListener('pointercancel', endSwipe);
 }
-window.addEventListener('pointerup', endSwipe);
-window.addEventListener('pointercancel', endSwipe);
 
-/* ---------- Media upload ---------- */
+attachSwipe(document.getElementById('messages'), (r) => startReply(r.id, r.name, r.preview));
+attachSwipe(document.getElementById('history-list'), (r) => startSecretReply(r));
+
+/* ---------- Media upload (normal chat) ---------- */
 msgInput.addEventListener('keypress', (e) => {
   if (e.key === 'Enter') sendMessage();
 });
@@ -506,7 +512,7 @@ document.getElementById('media-input').addEventListener('change', async (e) => {
   e.target.value = '';
 });
 
-/* ---------- Incoming messages ---------- */
+/* ---------- Incoming messages (normal chat) ---------- */
 socket.on('chat-message', ({ id, name, message, replyTo }) => {
   typingUsers.delete(name);
   updateTypingText();
@@ -528,40 +534,53 @@ socket.on('system-message', (text) => {
 });
 
 function addTextMessage(id, name, text, mine, replyTo) {
+  const wrap = buildTextItem(id, name, text, mine, replyTo, null);
+  document.getElementById('messages').appendChild(wrap);
+  scrollDown();
+}
+
+function addMediaMessage(id, name, url, type, mine, replyTo) {
+  const wrap = buildMediaItem(id, name, url, type, mine, replyTo, null);
+  document.getElementById('messages').appendChild(wrap);
+  scrollDown();
+}
+
+/* Dono chats ke liye common message banane wale functions */
+function buildTextItem(id, name, text, mine, replyTo, ts) {
   const wrap = document.createElement('div');
   wrap.className = 'msg' + (mine ? ' mine' : '');
   wrap.setAttribute('data-id', id);
   wrap._reply = { id, name, preview: text.length > 50 ? text.slice(0, 50) + '...' : text };
   wrap.innerHTML =
     '<div class="sender">' + (mine ? '' : escapeHtml(name)) + '</div>' +
+    (ts ? '<div class="time">' + escapeHtml(new Date(ts).toLocaleString()) + '</div>' : '') +
     '<div class="bubble">' + buildQuotedHtml(replyTo) + escapeHtml(text) + '</div>';
-  document.getElementById('messages').appendChild(wrap);
-  scrollDown();
+  return wrap;
 }
 
-function addMediaMessage(id, name, url, type, mine, replyTo) {
+function buildMediaItem(id, name, url, type, mine, replyTo, ts) {
   const wrap = document.createElement('div');
   wrap.className = 'msg' + (mine ? ' mine' : '');
   wrap.setAttribute('data-id', id);
   let mediaTag = '';
-  let label = '📎 File';
-  if (type.startsWith('image/')) {
+  let label = '\uD83D\uDCCE File';
+  if (type && type.startsWith('image/')) {
     mediaTag = '<img src="' + url + '">';
-    label = '📷 Photo';
-  } else if (type.startsWith('video/')) {
+    label = '\uD83D\uDCF7 Photo';
+  } else if (type && type.startsWith('video/')) {
     mediaTag = '<video src="' + url + '" controls></video>';
-    label = '🎥 Video';
+    label = '\uD83C\uDFA5 Video';
   }
   wrap._reply = { id, name, preview: label };
   wrap.innerHTML =
     '<div class="sender">' + (mine ? '' : escapeHtml(name)) + '</div>' +
+    (ts ? '<div class="time">' + escapeHtml(new Date(ts).toLocaleString()) + '</div>' : '') +
     '<div class="bubble">' + buildQuotedHtml(replyTo) + mediaTag +
     '<br><a href="' + url + '" download>Download</a></div>';
-  document.getElementById('messages').appendChild(wrap);
-  scrollDown();
+  return wrap;
 }
 
-/* ---------- Permanent room + hidden history ---------- */
+/* ---------- Permanent room ---------- */
 const permBtn = document.getElementById('perm-btn');
 const heartBtn = document.getElementById('heart-btn');
 const modal = document.getElementById('modal');
@@ -583,7 +602,7 @@ function openModal(mode) {
   if (mode === 'make') {
     document.getElementById('modal-title').innerText = 'Make room permanent';
     document.getElementById('modal-note').innerText =
-      'Ek password set karo. Is room ki chat history hamesha save rahegi. Password baad mein badal nahi sakte, yaad rakhna.';
+      'Ek password set karo. Is room ki secret chat hamesha save rahegi. Password baad mein badal nahi sakte, yaad rakhna.';
     modalPass2.style.display = 'block';
   } else {
     document.getElementById('modal-title').innerText = 'Enter password';
@@ -641,67 +660,98 @@ heartBtn.addEventListener('pointerdown', () => {
 });
 heartBtn.addEventListener('contextmenu', (e) => e.preventDefault());
 
+/* ---------- Secret chat ---------- */
+const historyPanel = document.getElementById('history-panel');
+const historyList = document.getElementById('history-list');
+const secretMsgInput = document.getElementById('secret-msg-input');
+
+// Sahi password par server purane secret messages bhejta hai
 socket.on('history', (items) => {
   closeModal();
-  const list = document.getElementById('history-list');
-  list.innerHTML = '';
+  historyList.innerHTML = '';
   if (!items.length) {
     const empty = document.createElement('div');
     empty.className = 'hist-empty';
-    empty.innerText = 'Abhi tak koi saved message nahi hai';
-    list.appendChild(empty);
+    empty.id = 'hist-empty';
+    empty.innerText = 'Abhi tak koi secret message nahi hai, pehla bhejo';
+    historyList.appendChild(empty);
+  } else {
+    items.forEach(addSecretItem);
   }
-  items.forEach((m) => {
-    const row = document.createElement('div');
-    row.className = 'hist-item';
+  historyPanel.style.display = 'flex';
+  historyList.scrollTop = historyList.scrollHeight;
+  secretMsgInput.focus();
+});
 
-    const head = document.createElement('div');
-    const nameEl = document.createElement('span');
-    nameEl.className = 'h-name';
-    nameEl.innerText = m.name || '';
-    const timeEl = document.createElement('span');
-    timeEl.className = 'h-time';
-    timeEl.innerText = m.ts ? new Date(m.ts).toLocaleString() : '';
-    head.appendChild(nameEl);
-    head.appendChild(timeEl);
-    row.appendChild(head);
+// Naya secret message (sirf unlock kiye hue logon ko aata hai)
+socket.on('secret-message', (m) => {
+  if (historyPanel.style.display !== 'flex') return;
+  addSecretItem(m);
+  historyList.scrollTop = historyList.scrollHeight;
+});
 
-    if (m.kind === 'media' && m.url) {
-      const type = m.type || '';
-      let el = null;
-      if (type.startsWith('image/')) {
-        el = document.createElement('img');
-        el.src = m.url;
-      } else if (type.startsWith('video/')) {
-        el = document.createElement('video');
-        el.src = m.url;
-        el.controls = true;
-      }
-      if (el) {
-        el.onerror = () => {
-          const note = document.createElement('div');
-          note.innerText = '(file ab available nahi hai)';
-          note.style.color = '#999';
-          el.replaceWith(note);
-        };
-        row.appendChild(el);
-      }
-    } else {
-      const text = document.createElement('div');
-      text.innerText = m.message || '';
-      row.appendChild(text);
+function addSecretItem(m) {
+  const empty = document.getElementById('hist-empty');
+  if (empty) empty.remove();
+
+  const mine = m.name === myName;
+  const el = (m.kind === 'media' && m.url)
+    ? buildMediaItem(m.id, m.name, m.url, m.type, mine, m.replyTo, m.ts)
+    : buildTextItem(m.id, m.name, m.message || '', mine, m.replyTo, m.ts);
+  historyList.appendChild(el);
+}
+
+function startSecretReply(r) {
+  secretReplyingTo = { id: r.id, name: r.name, preview: r.preview };
+  document.getElementById('secret-rp-text').innerText = 'Replying to ' + r.name + ': ' + r.preview;
+  document.getElementById('secret-reply-preview').style.display = 'flex';
+  secretMsgInput.focus();
+}
+
+function cancelSecretReply() {
+  secretReplyingTo = null;
+  document.getElementById('secret-reply-preview').style.display = 'none';
+}
+
+function sendSecretMessage() {
+  const text = secretMsgInput.value.trim();
+  if (!text) return;
+  socket.emit('secret-message', { message: text, replyTo: secretReplyingTo });
+  secretMsgInput.value = '';
+  cancelSecretReply();
+}
+
+secretMsgInput.addEventListener('keypress', (e) => {
+  if (e.key === 'Enter') sendSecretMessage();
+});
+
+document.getElementById('secret-media-input').addEventListener('change', async (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+
+  const formData = new FormData();
+  formData.append('file', file);
+
+  try {
+    const res = await fetch('/upload', { method: 'POST', body: formData });
+    const result = await res.json();
+    if (result.url) {
+      socket.emit('secret-media-message', { url: result.url, type: result.type, replyTo: secretReplyingTo });
+      cancelSecretReply();
     }
-    list.appendChild(row);
-  });
-  document.getElementById('history-panel').style.display = 'flex';
-  list.scrollTop = list.scrollHeight;
+  } catch (err) {
+    alert('Upload failed, please try again');
+  }
+  e.target.value = '';
 });
 
 function closeHistory() {
-  document.getElementById('history-panel').style.display = 'none';
-  document.getElementById('history-list').innerHTML = '';
+  historyPanel.style.display = 'none';
+  historyList.innerHTML = '';
+  cancelSecretReply();
 }
 
+/* ---------- Helpers ---------- */
 function scrollDown() {
   const box = document.getElementById('messages');
   box.scrollTop = box.scrollHeight;
