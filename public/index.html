@@ -131,19 +131,8 @@ body.swiping { user-select: none; -webkit-user-select: none; }
 .hist-empty { text-align: center; color: #999; margin-top: 30px; font-size: 14px; }
 
 /* Edit button (sirf apne text messages par) */
-/* BADLAV 3: pehle opacity 0.6 tha, ab display none. Hover wali line hata di. */
-.edit-btn {
-  position: absolute;
-  left: -30px;
-  bottom: 2px;
-  border: none;
-  background: transparent;
-  font-size: 15px;
-  cursor: pointer;
-  display: none;
-  padding: 2px;
-}
-.msg.show-edit .edit-btn { display: block; opacity: 1; }
+/* BADLAV 3: pencil button nahi hai. Hold karne par message edit mode mein jata hai aur peela outline dikhta hai */
+.msg.editing .bubble { outline: 3px solid #ffd54f; }
 .msg { -webkit-touch-callout: none; }
 .edited-tag { font-size: 10px; opacity: 0.7; margin-left: 4px; }
 
@@ -382,7 +371,7 @@ body.swiping { user-select: none; -webkit-user-select: none; }
   <!-- Normal chat -->
   <div id="messages"></div>
   <div id="typing-indicator">
-    <!-- BADLAV 1: pehle yahan &#128522; tha, ab 👀 -->
+    <!-- BADLAV 1: 👀 -->
     <span id="buddy-face">👀</span>
     <div id="buddy-cloud"><span class="dot"></span><span class="dot"></span><span class="dot"></span></div>
     <span id="buddy-label"></span>
@@ -458,6 +447,7 @@ function joinRoom() {
 
 function sendMessage() {
   const input = document.getElementById('msg-input');
+  if (trySubmitEdit(input)) return;
   const text = input.value.trim();
   if (!text) return;
   socket.emit('chat-message', { message: text, replyTo: replyingTo });
@@ -671,15 +661,8 @@ function buildTextItem(id, name, text, mine, replyTo, ts, edited) {
     (edited ? '<span class="edited-tag">(edited)</span>' : '') +
     '</div>';
 
-  // Sirf apne text message par edit button
-  if (mine) {
-    const btn = document.createElement('button');
-    btn.className = 'edit-btn';
-    btn.innerText = '\u270F\uFE0F';
-    btn.title = 'Edit message';
-    btn.addEventListener('click', () => editMessage(wrap));
-    wrap.appendChild(btn);
-  }
+  // Sirf apne text message par hold-to-edit chalega
+  if (mine) wrap._editable = true;
   return wrap;
 }
 
@@ -706,18 +689,17 @@ function buildMediaItem(id, name, url, type, mine, replyTo, ts) {
 }
 
 /* ---------- Hold karne par edit button dikhana ---------- */
-/* BADLAV 4: ye poora block naya hai */
+/* BADLAV 4: hold karne par message seedha neeche ke input box mein edit hone aata hai */
 let editHoldTimer = null;
+let editingWrap = null;
+
 function attachHoldEdit(container) {
   container.addEventListener('pointerdown', (e) => {
     const el = e.target.closest('.msg.mine');
-    if (!el || !el.querySelector('.edit-btn')) return;
+    if (!el || !el._editable) return;
     if (e.target.closest('a, video, button')) return;
     clearTimeout(editHoldTimer);
-    editHoldTimer = setTimeout(() => {
-      document.querySelectorAll('.msg.show-edit').forEach((m) => m.classList.remove('show-edit'));
-      el.classList.add('show-edit');
-    }, 500);
+    editHoldTimer = setTimeout(() => startEdit(el), 500);
   });
   ['pointerup', 'pointerleave', 'pointercancel', 'pointermove'].forEach((ev) => {
     container.addEventListener(ev, () => clearTimeout(editHoldTimer));
@@ -729,29 +711,43 @@ function attachHoldEdit(container) {
 attachHoldEdit(document.getElementById('messages'));
 attachHoldEdit(document.getElementById('history-list'));
 
-// Kahin aur tap karne par edit button chhup jaye
-document.addEventListener('pointerdown', (e) => {
-  if (e.target.closest('.edit-btn') || e.target.closest('.msg.show-edit')) return;
-  document.querySelectorAll('.msg.show-edit').forEach((m) => m.classList.remove('show-edit'));
-});
-
-/* ---------- Message edit (normal aur secret dono chat) ---------- */
-function editMessage(wrap) {
-  wrap.classList.remove('show-edit'); // BADLAV 4: ye line nayi hai
-  const isSecret = !!wrap.closest('#history-list');
-  const textEl = wrap.querySelector('.msg-text');
+function startEdit(el) {
+  const isSecret = !!el.closest('#history-list');
+  const textEl = el.querySelector('.msg-text');
   if (!textEl) return;
-  const oldText = textEl.innerText;
-  const input = prompt('Message edit karo:', oldText);
-  if (input === null) return;
-  const newText = input.trim();
-  if (!newText || newText === oldText) return;
-  socket.emit(isSecret ? 'edit-secret-message' : 'edit-message', {
-    id: wrap.getAttribute('data-id'),
-    newText: newText
-  });
+  cancelEdit();
+  editingWrap = el;
+  el.classList.add('editing');
+  const input = isSecret ? secretMsgInput : msgInput;
+  input.value = textEl.innerText;
+  input.focus();
 }
 
+function cancelEdit() {
+  if (editingWrap) editingWrap.classList.remove('editing');
+  editingWrap = null;
+}
+
+// Edit mode mein send dabane par naya text save hota hai
+function trySubmitEdit(input) {
+  if (!editingWrap) return false;
+  const wrap = editingWrap;
+  const isSecret = !!wrap.closest('#history-list');
+  const textEl = wrap.querySelector('.msg-text');
+  const oldText = textEl ? textEl.innerText : '';
+  const newText = input.value.trim();
+  cancelEdit();
+  input.value = '';
+  if (newText && newText !== oldText) {
+    socket.emit(isSecret ? 'edit-secret-message' : 'edit-message', {
+      id: wrap.getAttribute('data-id'),
+      newText: newText
+    });
+  }
+  return true;
+}
+
+/* ---------- Message edit (normal aur secret dono chat) ---------- */
 function applyEdit(container, id, newText) {
   const el = container.querySelector('[data-id="' + id + '"]');
   if (!el) return;
@@ -913,6 +909,7 @@ function cancelSecretReply() {
 }
 
 function sendSecretMessage() {
+  if (trySubmitEdit(secretMsgInput)) return;
   const text = secretMsgInput.value.trim();
   if (!text) return;
   socket.emit('secret-message', { message: text, replyTo: secretReplyingTo });
@@ -945,6 +942,8 @@ document.getElementById('secret-media-input').addEventListener('change', async (
 });
 
 function closeHistory() {
+  cancelEdit();
+  secretMsgInput.value = '';
   historyPanel.style.display = 'none';
   historyList.innerHTML = '';
   cancelSecretReply();
