@@ -131,6 +131,7 @@ body.swiping { user-select: none; -webkit-user-select: none; }
 .hist-empty { text-align: center; color: #999; margin-top: 30px; font-size: 14px; }
 
 /* Edit button (sirf apne text messages par) */
+/* BADLAV 3: pehle opacity 0.6 tha, ab display none. Hover wali line hata di. */
 .edit-btn {
   position: absolute;
   left: -30px;
@@ -139,10 +140,11 @@ body.swiping { user-select: none; -webkit-user-select: none; }
   background: transparent;
   font-size: 15px;
   cursor: pointer;
-  opacity: 0.6;
+  display: none;
   padding: 2px;
 }
-.edit-btn:hover { opacity: 1; }
+.msg.show-edit .edit-btn { display: block; opacity: 1; }
+.msg { -webkit-touch-callout: none; }
 .edited-tag { font-size: 10px; opacity: 0.7; margin-left: 4px; }
 
 /* Message ke andar quoted reply */
@@ -380,7 +382,8 @@ body.swiping { user-select: none; -webkit-user-select: none; }
   <!-- Normal chat -->
   <div id="messages"></div>
   <div id="typing-indicator">
-    <span id="buddy-face">&#128522;</span>
+    <!-- BADLAV 1: pehle yahan &#128522; tha, ab 👀 -->
+    <span id="buddy-face">👀</span>
     <div id="buddy-cloud"><span class="dot"></span><span class="dot"></span><span class="dot"></span></div>
     <span id="buddy-label"></span>
   </div>
@@ -490,7 +493,8 @@ function updateTypingText() {
     buddyCloud.classList.remove('show');
     buddyLabel.innerText = '';
     buddyFace.classList.remove('tongue');
-    buddyFace.innerText = '\uD83D\uDE0A';
+    // BADLAV 2: pehle '\uD83D\uDE0A' tha, ab '👀'
+    buddyFace.innerText = '👀';
   } else {
     buddyCloud.classList.add('show');
     buddyLabel.innerText = names.join(', ');
@@ -507,7 +511,8 @@ setInterval(() => {
   setTimeout(() => {
     if (typingUsers.size > 0) return;
     buddyFace.classList.remove('tongue');
-    buddyFace.innerText = '\uD83D\uDE0A';
+    // BADLAV 2: yahan bhi '\uD83D\uDE0A' ki jagah '👀'
+    buddyFace.innerText = '👀';
   }, 900);
 }, 6000);
 
@@ -700,8 +705,39 @@ function buildMediaItem(id, name, url, type, mine, replyTo, ts) {
   return wrap;
 }
 
+/* ---------- Hold karne par edit button dikhana ---------- */
+/* BADLAV 4: ye poora block naya hai */
+let editHoldTimer = null;
+function attachHoldEdit(container) {
+  container.addEventListener('pointerdown', (e) => {
+    const el = e.target.closest('.msg.mine');
+    if (!el || !el.querySelector('.edit-btn')) return;
+    if (e.target.closest('a, video, button')) return;
+    clearTimeout(editHoldTimer);
+    editHoldTimer = setTimeout(() => {
+      document.querySelectorAll('.msg.show-edit').forEach((m) => m.classList.remove('show-edit'));
+      el.classList.add('show-edit');
+    }, 500);
+  });
+  ['pointerup', 'pointerleave', 'pointercancel', 'pointermove'].forEach((ev) => {
+    container.addEventListener(ev, () => clearTimeout(editHoldTimer));
+  });
+  container.addEventListener('contextmenu', (e) => {
+    if (e.target.closest('.msg.mine')) e.preventDefault();
+  });
+}
+attachHoldEdit(document.getElementById('messages'));
+attachHoldEdit(document.getElementById('history-list'));
+
+// Kahin aur tap karne par edit button chhup jaye
+document.addEventListener('pointerdown', (e) => {
+  if (e.target.closest('.edit-btn') || e.target.closest('.msg.show-edit')) return;
+  document.querySelectorAll('.msg.show-edit').forEach((m) => m.classList.remove('show-edit'));
+});
+
 /* ---------- Message edit (normal aur secret dono chat) ---------- */
 function editMessage(wrap) {
+  wrap.classList.remove('show-edit'); // BADLAV 4: ye line nayi hai
   const isSecret = !!wrap.closest('#history-list');
   const textEl = wrap.querySelector('.msg-text');
   if (!textEl) return;
