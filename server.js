@@ -92,6 +92,20 @@ async function saveSecretMessage(roomCode, msg) {
   }
 }
 
+// Normal chat ke text messages kisne bheje (edit ke time check karne ke liye).
+// Ye sirf server ki memory mein rehta hai, database mein nahi jata.
+const normalMessageOwners = new Map();
+const MAX_TRACKED_MESSAGES = 5000;
+const MAX_MESSAGE_LENGTH = 2000;
+
+function trackNormalMessage(id, roomCode, name) {
+  normalMessageOwners.set(id, { roomCode, name });
+  if (normalMessageOwners.size > MAX_TRACKED_MESSAGES) {
+    const oldestKey = normalMessageOwners.keys().next().value;
+    normalMessageOwners.delete(oldestKey);
+  }
+}
+
 // ---------- Sockets ----------
 io.on('connection', (socket) => {
   socket.data.failedAttempts = 0;
@@ -202,7 +216,23 @@ io.on('connection', (socket) => {
     const message = isObj ? data.message : data;
     const replyTo = isObj ? (data.replyTo || null) : null;
 
-    io.to(roomCode).emit('chat-message', { id: makeId(), name, message, replyTo });
+    const id = makeId();
+    trackNormalMessage(id, roomCode, name);
+    io.to(roomCode).emit('chat-message', { id, name, message, replyTo });
+  });
+
+  // Normal chat ka message edit karna (sirf apna hi message)
+  socket.on('edit-message', ({ id, newText } = {}) => {
+    const { name, roomCode } = socket.data;
+    if (!roomCode || typeof id !== 'string' || typeof newText !== 'string') return;
+
+    const text = newText.trim().slice(0, MAX_MESSAGE_LENGTH);
+    if (!text) return;
+
+    const owner = normalMessageOwners.get(id);
+    if (!owner || owner.roomCode !== roomCode || owner.name !== name) return;
+
+    io.to(roomCode).emit('message-edited', { id, newText: text });
   });
 
   // Normal media message (kabhi save nahi hoti)
@@ -237,6 +267,35 @@ io.on('connection', (socket) => {
       }
     }
     saveSecretMessage(roomCode, msg);
+  });
+
+  // Secret chat ka message edit karna (sirf apna hi text message)
+  socket.on('edit-secret-message', async ({ id, newText } = {}) => {
+    const { name, roomCode, unlocked } = socket.data;
+    if (!roomCode || !unlocked || !db) return;
+    if (typeof id !== 'string' || typeof newText !== 'string') return;
+
+    const text = newText.trim().slice(0, MAX_MESSAGE_LENGTH);
+    if (!text) return;
+
+    try {
+      const ref = roomRef(roomCode).collection('secretMessages').doc(id);
+      const snap = await ref.get();
+      if (!snap.exists) return;
+
+      const data = snap.data();
+      if (data.kind !== 'text' || data.name !== name) return;
+
+      await ref.update({ message: text, edited: true });
+
+      for (const [, s] of io.sockets.sockets) {
+        if (s.data.roomCode === roomCode && s.data.unlocked) {
+          s.emit('secret-message-edited', { id, newText: text });
+        }
+      }
+    } catch (err) {
+      console.error('Secret message edit failed:', err.message);
+    }
   });
 
   // Secret chat ka media message
