@@ -136,6 +136,10 @@ body.swiping { user-select: none; -webkit-user-select: none; }
 .msg { -webkit-touch-callout: none; }
 .edited-tag { font-size: 10px; opacity: 0.7; margin-left: 4px; }
 
+/* BADLAV 5: links neele rang mein dikhenge (apne purple bubble mein halka neela) */
+.msg a.chat-link { color: #1a73e8; text-decoration: underline; word-break: break-all; }
+.msg.mine a.chat-link { color: #8ecbff; }
+
 /* Message ke andar quoted reply */
 .quoted {
   border-left: 3px solid #764ba2;
@@ -657,7 +661,7 @@ function buildTextItem(id, name, text, mine, replyTo, ts, edited) {
     '<div class="sender">' + (mine ? '' : escapeHtml(name)) + '</div>' +
     (ts ? '<div class="time">' + escapeHtml(new Date(ts).toLocaleString()) + '</div>' : '') +
     '<div class="bubble">' + buildQuotedHtml(replyTo) +
-    '<span class="msg-text">' + escapeHtml(text) + '</span>' +
+    '<span class="msg-text">' + linkify(text) + '</span>' +
     (edited ? '<span class="edited-tag">(edited)</span>' : '') +
     '</div>';
 
@@ -753,7 +757,7 @@ function applyEdit(container, id, newText) {
   if (!el) return;
   const textEl = el.querySelector('.msg-text');
   if (!textEl) return;
-  textEl.innerText = newText;
+  textEl.innerHTML = linkify(newText);
   const bubble = el.querySelector('.bubble');
   if (bubble && !bubble.querySelector('.edited-tag')) {
     const tag = document.createElement('span');
@@ -959,6 +963,21 @@ function escapeHtml(str) {
   const div = document.createElement('div');
   div.innerText = str;
   return div.innerHTML;
+}
+
+/* BADLAV 5: text mein jo bhi link ho use neela clickable link bana deta hai (naye tab mein khulta hai) */
+function linkify(text) {
+  const safe = escapeHtml(text);
+  return safe.replace(/((https?:\/\/|www\.)[^\s<]+)/gi, (m) => {
+    let url = m;
+    let tail = '';
+    while (/[.,!?;:)\]]$/.test(url)) {
+      tail = url.slice(-1) + tail;
+      url = url.slice(0, -1);
+    }
+    const href = /^https?:\/\//i.test(url) ? url : 'https://' + url;
+    return '<a class="chat-link" href="' + href + '" target="_blank" rel="noopener noreferrer">' + url + '</a>' + tail;
+  });
 }
 </script>
 </body>
