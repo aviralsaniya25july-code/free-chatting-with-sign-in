@@ -130,6 +130,21 @@ body.swiping { user-select: none; -webkit-user-select: none; }
 .system-msg { text-align: center; color: #999; font-size: 13px; margin: 8px 0; }
 .hist-empty { text-align: center; color: #999; margin-top: 30px; font-size: 14px; }
 
+/* Edit button (sirf apne text messages par) */
+.edit-btn {
+  position: absolute;
+  left: -30px;
+  bottom: 2px;
+  border: none;
+  background: transparent;
+  font-size: 15px;
+  cursor: pointer;
+  opacity: 0.6;
+  padding: 2px;
+}
+.edit-btn:hover { opacity: 1; }
+.edited-tag { font-size: 10px; opacity: 0.7; margin-left: 4px; }
+
 /* Message ke andar quoted reply */
 .quoted {
   border-left: 3px solid #764ba2;
@@ -146,14 +161,79 @@ body.swiping { user-select: none; -webkit-user-select: none; }
 /* Highlight jab quoted message pe click ho */
 .msg.highlight .bubble { outline: 3px solid #ffd54f; }
 
-/* Typing indicator */
+/* Typing buddy (Snapchat jaisa character + soch wala badal) */
 #typing-indicator {
-  height: 20px;
-  padding: 0 16px;
-  font-size: 12px;
-  color: #764ba2;
-  font-style: italic;
+  height: 50px;
+  padding: 0 16px 4px;
   background: #f5f5f5;
+  display: flex;
+  align-items: flex-end;
+  gap: 6px;
+}
+#buddy-face {
+  font-size: 32px;
+  line-height: 1;
+  display: inline-block;
+  user-select: none;
+  -webkit-user-select: none;
+}
+#buddy-face.tongue { animation: buddyWiggle 0.7s ease; }
+#buddy-cloud {
+  display: none;
+  position: relative;
+  background: #e4e4e4;
+  border-radius: 16px;
+  padding: 7px 12px;
+  margin-bottom: 12px;
+  margin-left: 6px;
+}
+#buddy-cloud.show { display: flex; align-items: center; gap: 4px; }
+#buddy-cloud::before {
+  content: '';
+  position: absolute;
+  left: -7px;
+  bottom: 2px;
+  width: 9px;
+  height: 9px;
+  background: #e4e4e4;
+  border-radius: 50%;
+}
+#buddy-cloud::after {
+  content: '';
+  position: absolute;
+  left: -13px;
+  bottom: -4px;
+  width: 5px;
+  height: 5px;
+  background: #e4e4e4;
+  border-radius: 50%;
+}
+#buddy-cloud .dot {
+  width: 7px;
+  height: 7px;
+  background: #777;
+  border-radius: 50%;
+  animation: buddyDot 1s infinite;
+}
+#buddy-cloud .dot:nth-child(2) { animation-delay: 0.2s; }
+#buddy-cloud .dot:nth-child(3) { animation-delay: 0.4s; }
+#buddy-label {
+  font-size: 11px;
+  color: #764ba2;
+  margin-bottom: 14px;
+  max-width: 130px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+@keyframes buddyDot {
+  0%, 60%, 100% { transform: translateY(0); opacity: 0.4; }
+  30% { transform: translateY(-5px); opacity: 1; }
+}
+@keyframes buddyWiggle {
+  0%, 100% { transform: rotate(0deg); }
+  25% { transform: rotate(-12deg); }
+  75% { transform: rotate(12deg); }
 }
 
 /* Reply preview (input ke upar) */
@@ -299,7 +379,11 @@ body.swiping { user-select: none; -webkit-user-select: none; }
 
   <!-- Normal chat -->
   <div id="messages"></div>
-  <div id="typing-indicator"></div>
+  <div id="typing-indicator">
+    <span id="buddy-face">&#128522;</span>
+    <div id="buddy-cloud"><span class="dot"></span><span class="dot"></span><span class="dot"></span></div>
+    <span id="buddy-label"></span>
+  </div>
   <div id="reply-preview" class="reply-preview">
     <div class="rp-text" id="rp-text"></div>
     <button onclick="cancelReply()">&#10006;</button>
@@ -379,8 +463,11 @@ function sendMessage() {
   stopTyping();
 }
 
-/* ---------- Typing indicator (normal chat) ---------- */
+/* ---------- Typing buddy (normal chat) ---------- */
 const msgInput = document.getElementById('msg-input');
+const buddyFace = document.getElementById('buddy-face');
+const buddyCloud = document.getElementById('buddy-cloud');
+const buddyLabel = document.getElementById('buddy-label');
 
 msgInput.addEventListener('input', () => {
   if (!isTyping) { isTyping = true; socket.emit('typing'); }
@@ -396,13 +483,33 @@ function stopTyping() {
 socket.on('typing', ({ name }) => { typingUsers.add(name); updateTypingText(); });
 socket.on('stop-typing', ({ name }) => { typingUsers.delete(name); updateTypingText(); });
 
+// Koi type kar raha ho to character soch mein aa jata hai aur badal mein dots uchhalte hain
 function updateTypingText() {
-  const el = document.getElementById('typing-indicator');
   const names = Array.from(typingUsers);
-  if (names.length === 0) el.innerText = '';
-  else if (names.length === 1) el.innerText = names[0] + ' is typing...';
-  else el.innerText = names.join(', ') + ' are typing...';
+  if (names.length === 0) {
+    buddyCloud.classList.remove('show');
+    buddyLabel.innerText = '';
+    buddyFace.classList.remove('tongue');
+    buddyFace.innerText = '\uD83D\uDE0A';
+  } else {
+    buddyCloud.classList.add('show');
+    buddyLabel.innerText = names.join(', ');
+    buddyFace.classList.remove('tongue');
+    buddyFace.innerText = '\uD83E\uDD14';
+  }
 }
+
+// Jab koi type nahi kar raha, character kabhi kabhi jeebh nikalta hai
+setInterval(() => {
+  if (typingUsers.size > 0) return;
+  buddyFace.innerText = '\uD83D\uDE1B';
+  buddyFace.classList.add('tongue');
+  setTimeout(() => {
+    if (typingUsers.size > 0) return;
+    buddyFace.classList.remove('tongue');
+    buddyFace.innerText = '\uD83D\uDE0A';
+  }, 900);
+}, 6000);
 
 /* ---------- Reply (normal chat) ---------- */
 function startReply(id, name, preview) {
@@ -441,7 +548,7 @@ function attachSwipe(container, onTrigger) {
   container.addEventListener('pointerdown', (e) => {
     const el = e.target.closest('.msg');
     if (!el || !el._reply) return;
-    if (e.target.closest('a, video')) return;
+    if (e.target.closest('a, video, button')) return;
     sw = { el, id: e.pointerId, startX: e.clientX, startY: e.clientY, dx: 0, active: false };
   });
 
@@ -534,7 +641,7 @@ socket.on('system-message', (text) => {
 });
 
 function addTextMessage(id, name, text, mine, replyTo) {
-  const wrap = buildTextItem(id, name, text, mine, replyTo, null);
+  const wrap = buildTextItem(id, name, text, mine, replyTo, null, false);
   document.getElementById('messages').appendChild(wrap);
   scrollDown();
 }
@@ -546,7 +653,7 @@ function addMediaMessage(id, name, url, type, mine, replyTo) {
 }
 
 /* Dono chats ke liye common message banane wale functions */
-function buildTextItem(id, name, text, mine, replyTo, ts) {
+function buildTextItem(id, name, text, mine, replyTo, ts, edited) {
   const wrap = document.createElement('div');
   wrap.className = 'msg' + (mine ? ' mine' : '');
   wrap.setAttribute('data-id', id);
@@ -554,7 +661,20 @@ function buildTextItem(id, name, text, mine, replyTo, ts) {
   wrap.innerHTML =
     '<div class="sender">' + (mine ? '' : escapeHtml(name)) + '</div>' +
     (ts ? '<div class="time">' + escapeHtml(new Date(ts).toLocaleString()) + '</div>' : '') +
-    '<div class="bubble">' + buildQuotedHtml(replyTo) + escapeHtml(text) + '</div>';
+    '<div class="bubble">' + buildQuotedHtml(replyTo) +
+    '<span class="msg-text">' + escapeHtml(text) + '</span>' +
+    (edited ? '<span class="edited-tag">(edited)</span>' : '') +
+    '</div>';
+
+  // Sirf apne text message par edit button
+  if (mine) {
+    const btn = document.createElement('button');
+    btn.className = 'edit-btn';
+    btn.innerText = '\u270F\uFE0F';
+    btn.title = 'Edit message';
+    btn.addEventListener('click', () => editMessage(wrap));
+    wrap.appendChild(btn);
+  }
   return wrap;
 }
 
@@ -579,6 +699,44 @@ function buildMediaItem(id, name, url, type, mine, replyTo, ts) {
     '<br><a href="' + url + '" download>Download</a></div>';
   return wrap;
 }
+
+/* ---------- Message edit (normal aur secret dono chat) ---------- */
+function editMessage(wrap) {
+  const isSecret = !!wrap.closest('#history-list');
+  const textEl = wrap.querySelector('.msg-text');
+  if (!textEl) return;
+  const oldText = textEl.innerText;
+  const input = prompt('Message edit karo:', oldText);
+  if (input === null) return;
+  const newText = input.trim();
+  if (!newText || newText === oldText) return;
+  socket.emit(isSecret ? 'edit-secret-message' : 'edit-message', {
+    id: wrap.getAttribute('data-id'),
+    newText: newText
+  });
+}
+
+function applyEdit(container, id, newText) {
+  const el = container.querySelector('[data-id="' + id + '"]');
+  if (!el) return;
+  const textEl = el.querySelector('.msg-text');
+  if (!textEl) return;
+  textEl.innerText = newText;
+  const bubble = el.querySelector('.bubble');
+  if (bubble && !bubble.querySelector('.edited-tag')) {
+    const tag = document.createElement('span');
+    tag.className = 'edited-tag';
+    tag.innerText = '(edited)';
+    bubble.appendChild(tag);
+  }
+  if (el._reply) {
+    el._reply.preview = newText.length > 50 ? newText.slice(0, 50) + '...' : newText;
+  }
+}
+
+socket.on('message-edited', ({ id, newText }) => {
+  applyEdit(document.getElementById('messages'), id, newText);
+});
 
 /* ---------- Permanent room ---------- */
 const permBtn = document.getElementById('perm-btn');
@@ -690,6 +848,11 @@ socket.on('secret-message', (m) => {
   historyList.scrollTop = historyList.scrollHeight;
 });
 
+// Secret message edit hone par
+socket.on('secret-message-edited', ({ id, newText }) => {
+  applyEdit(historyList, id, newText);
+});
+
 function addSecretItem(m) {
   const empty = document.getElementById('hist-empty');
   if (empty) empty.remove();
@@ -697,7 +860,7 @@ function addSecretItem(m) {
   const mine = m.name === myName;
   const el = (m.kind === 'media' && m.url)
     ? buildMediaItem(m.id, m.name, m.url, m.type, mine, m.replyTo, m.ts)
-    : buildTextItem(m.id, m.name, m.message || '', mine, m.replyTo, m.ts);
+    : buildTextItem(m.id, m.name, m.message || '', mine, m.replyTo, m.ts, !!m.edited);
   historyList.appendChild(el);
 }
 
