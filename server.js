@@ -40,7 +40,39 @@ if (
 const uploadDir = path.join(__dirname, 'public', 'uploads');
 if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
 
-const upload = multer({ dest: uploadDir, limits: { fileSize: 100 * 1024 * 1024 } });
+// BADLAV: ab file ke naam ke aakhir mein extension (.png, .mp4 etc.) lagta hai
+const MIME_EXT = {
+  'image/png': '.png',
+  'image/jpeg': '.jpg',
+  'image/jpg': '.jpg',
+  'image/gif': '.gif',
+  'image/webp': '.webp',
+  'image/heic': '.heic',
+  'image/heif': '.heif',
+  'video/mp4': '.mp4',
+  'video/quicktime': '.mov',
+  'video/webm': '.webm',
+  'video/3gpp': '.3gp',
+  'video/x-matroska': '.mkv'
+};
+
+function pickExtension(file) {
+  const fromName = path.extname(file.originalname || '').toLowerCase();
+  if (/^\.[a-z0-9]{1,5}$/.test(fromName)) return fromName;
+  if (MIME_EXT[file.mimetype]) return MIME_EXT[file.mimetype];
+  const sub = (file.mimetype || '').split('/')[1];
+  if (sub && /^[a-z0-9]{1,5}$/i.test(sub)) return '.' + sub.toLowerCase();
+  return '';
+}
+
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => cb(null, uploadDir),
+  filename: (req, file, cb) => {
+    cb(null, crypto.randomBytes(16).toString('hex') + pickExtension(file));
+  }
+});
+
+const upload = multer({ storage, limits: { fileSize: 100 * 1024 * 1024 } });
 
 app.use(express.static(path.join(__dirname, 'public')));
 
@@ -89,6 +121,15 @@ async function saveSecretMessage(roomCode, msg) {
     await roomRef(roomCode).collection('secretMessages').doc(msg.id).set(msg);
   } catch (err) {
     console.error('Secret message save failed:', err.message);
+  }
+}
+
+// Sirf us room ke unlocked logon ko event bhejna (exceptId wale ko chhodkar)
+function emitToUnlocked(roomCode, event, payload, exceptId) {
+  for (const [id, s] of io.sockets.sockets) {
+    if (s.data.roomCode === roomCode && s.data.unlocked && id !== exceptId) {
+      s.emit(event, payload);
+    }
   }
 }
 
@@ -196,6 +237,31 @@ io.on('connection', (socket) => {
     }
   });
 
+  // Secret chat ka saara media (Media button ke liye)
+  socket.on('get-secret-media', async () => {
+    const { roomCode, unlocked } = socket.data;
+    if (!roomCode || !unlocked || !db) return;
+
+    try {
+      const snap = await roomRef(roomCode)
+        .collection('secretMessages')
+        .where('kind', '==', 'media')
+        .get();
+
+      const items = snap.docs
+        .map((d) => d.data())
+        .filter((m) => m.url)
+        .sort((a, b) => (b.ts || 0) - (a.ts || 0))
+        .slice(0, 500)
+        .map((m) => ({ id: m.id, name: m.name, url: m.url, type: m.type, ts: m.ts }));
+
+      socket.emit('secret-media-list', items);
+    } catch (err) {
+      console.error('Secret media load failed:', err.message);
+      socket.emit('secret-media-error', 'Media load nahi ho paya');
+    }
+  });
+
   // Typing indicator (normal chat)
   socket.on('typing', () => {
     const { name, roomCode } = socket.data;
@@ -205,6 +271,19 @@ io.on('connection', (socket) => {
   socket.on('stop-typing', () => {
     const { name, roomCode } = socket.data;
     if (roomCode) socket.to(roomCode).emit('stop-typing', { name });
+  });
+
+  // Typing indicator (secret chat) - sirf unlocked logon ko dikhta hai
+  socket.on('secret-typing', () => {
+    const { name, roomCode, unlocked } = socket.data;
+    if (!roomCode || !unlocked) return;
+    emitToUnlocked(roomCode, 'secret-typing', { name }, socket.id);
+  });
+
+  socket.on('secret-stop-typing', () => {
+    const { name, roomCode, unlocked } = socket.data;
+    if (!roomCode || !unlocked) return;
+    emitToUnlocked(roomCode, 'secret-stop-typing', { name }, socket.id);
   });
 
   // Normal text message (kabhi save nahi hoti)
@@ -260,12 +339,7 @@ io.on('connection', (socket) => {
 
     const msg = { id: makeId(), name, message, replyTo, kind: 'text', ts: Date.now() };
 
-    // Sirf un sockets ko bhejo jo isi room mein unlocked hain
-    for (const [, s] of io.sockets.sockets) {
-      if (s.data.roomCode === roomCode && s.data.unlocked) {
-        s.emit('secret-message', msg);
-      }
-    }
+    emitToUnlocked(roomCode, 'secret-message', msg);
     saveSecretMessage(roomCode, msg);
   });
 
@@ -288,11 +362,7 @@ io.on('connection', (socket) => {
 
       await ref.update({ message: text, edited: true });
 
-      for (const [, s] of io.sockets.sockets) {
-        if (s.data.roomCode === roomCode && s.data.unlocked) {
-          s.emit('secret-message-edited', { id, newText: text });
-        }
-      }
+      emitToUnlocked(roomCode, 'secret-message-edited', { id, newText: text });
     } catch (err) {
       console.error('Secret message edit failed:', err.message);
     }
@@ -305,18 +375,15 @@ io.on('connection', (socket) => {
 
     const msg = { id: makeId(), name, url, type, replyTo: replyTo || null, kind: 'media', ts: Date.now() };
 
-    for (const [, s] of io.sockets.sockets) {
-      if (s.data.roomCode === roomCode && s.data.unlocked) {
-        s.emit('secret-message', msg);
-      }
-    }
+    emitToUnlocked(roomCode, 'secret-message', msg);
     saveSecretMessage(roomCode, msg);
   });
 
   socket.on('disconnect', () => {
-    const { name, roomCode } = socket.data;
+    const { name, roomCode, unlocked } = socket.data;
     if (roomCode) {
       socket.to(roomCode).emit('stop-typing', { name });
+      if (unlocked) emitToUnlocked(roomCode, 'secret-stop-typing', { name }, socket.id);
       io.to(roomCode).emit('system-message', `${name} left the room`);
     }
   });
