@@ -130,12 +130,13 @@ body.swiping { user-select: none; -webkit-user-select: none; }
 .system-msg { text-align: center; color: #999; font-size: 13px; margin: 8px 0; }
 .hist-empty { text-align: center; color: #999; margin-top: 30px; font-size: 14px; }
 
-/* Edit mode: hold karne par message edit hota hai aur peela outline dikhta hai */
+/* Edit button (sirf apne text messages par) */
+/* BADLAV 3: pencil button nahi hai. Hold karne par message edit mode mein jata hai aur peela outline dikhta hai */
 .msg.editing .bubble { outline: 3px solid #ffd54f; }
 .msg { -webkit-touch-callout: none; }
 .edited-tag { font-size: 10px; opacity: 0.7; margin-left: 4px; }
 
-/* Links neele rang mein dikhenge (apne purple bubble mein halka neela) */
+/* BADLAV 5: links neele rang mein dikhenge (apne purple bubble mein halka neela) */
 .msg a.chat-link { color: #1a73e8; text-decoration: underline; word-break: break-all; }
 .msg.mine a.chat-link { color: #8ecbff; }
 
@@ -155,17 +156,79 @@ body.swiping { user-select: none; -webkit-user-select: none; }
 /* Highlight jab quoted message pe click ho */
 .msg.highlight .bubble { outline: 3px solid #ffd54f; }
 
-/* BADLAV: typing indicator ab seedha saada text hai ("Name is typing...") */
-.typing-line {
-  height: 22px;
-  padding: 2px 16px 4px;
+/* Typing buddy (Snapchat jaisa character + soch wala badal) */
+#typing-indicator {
+  height: 50px;
+  padding: 0 16px 4px;
   background: #f5f5f5;
-  font-size: 12px;
-  color: #777;
-  font-style: italic;
-  white-space: nowrap;
+  display: flex;
+  align-items: flex-end;
+  gap: 6px;
+}
+#buddy-face {
+  font-size: 32px;
+  line-height: 1;
+  display: inline-block;
+  user-select: none;
+  -webkit-user-select: none;
+}
+#buddy-face.tongue { animation: buddyWiggle 0.7s ease; }
+#buddy-cloud {
+  display: none;
+  position: relative;
+  background: #e4e4e4;
+  border-radius: 16px;
+  padding: 7px 12px;
+  margin-bottom: 12px;
+  margin-left: 6px;
+}
+#buddy-cloud.show { display: flex; align-items: center; gap: 4px; }
+#buddy-cloud::before {
+  content: '';
+  position: absolute;
+  left: -7px;
+  bottom: 2px;
+  width: 9px;
+  height: 9px;
+  background: #e4e4e4;
+  border-radius: 50%;
+}
+#buddy-cloud::after {
+  content: '';
+  position: absolute;
+  left: -13px;
+  bottom: -4px;
+  width: 5px;
+  height: 5px;
+  background: #e4e4e4;
+  border-radius: 50%;
+}
+#buddy-cloud .dot {
+  width: 7px;
+  height: 7px;
+  background: #777;
+  border-radius: 50%;
+  animation: buddyDot 1s infinite;
+}
+#buddy-cloud .dot:nth-child(2) { animation-delay: 0.2s; }
+#buddy-cloud .dot:nth-child(3) { animation-delay: 0.4s; }
+#buddy-label {
+  font-size: 11px;
+  color: #764ba2;
+  margin-bottom: 14px;
+  max-width: 130px;
   overflow: hidden;
   text-overflow: ellipsis;
+  white-space: nowrap;
+}
+@keyframes buddyDot {
+  0%, 60%, 100% { transform: translateY(0); opacity: 0.4; }
+  30% { transform: translateY(-5px); opacity: 1; }
+}
+@keyframes buddyWiggle {
+  0%, 100% { transform: rotate(0deg); }
+  25% { transform: rotate(-12deg); }
+  75% { transform: rotate(12deg); }
 }
 
 /* Reply preview (input ke upar) */
@@ -267,7 +330,6 @@ body.swiping { user-select: none; -webkit-user-select: none; }
 #modal-ok { background: #764ba2; color: white; }
 
 .secret-box {
-  position: relative;
   background: white;
   width: 100%;
   height: 100%;
@@ -290,116 +352,6 @@ body.swiping { user-select: none; -webkit-user-select: none; }
   font-size: 16px;
   cursor: pointer;
 }
-.secret-title { display: flex; align-items: center; gap: 10px; }
-/* BADLAV: Media button, secret chat ke heart ke bagal mein */
-.secret-head #media-btn {
-  background: rgba(255,255,255,0.2);
-  font-size: 12px;
-  font-weight: normal;
-  padding: 5px 10px;
-  border-radius: 14px;
-}
-
-/* BADLAV: Media panel (secret chat ke andar) */
-#media-panel {
-  display: none;
-  position: absolute;
-  inset: 0;
-  z-index: 5;
-  flex-direction: column;
-  background: white;
-}
-#media-grid {
-  flex: 1;
-  overflow-y: auto;
-  padding: 10px;
-  background: #f5f5f5;
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 8px;
-  align-content: start;
-}
-#media-grid .hist-empty { grid-column: 1 / -1; }
-.m-tile {
-  background: white;
-  border-radius: 8px;
-  overflow: hidden;
-  cursor: pointer;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.15);
-}
-.m-thumb {
-  position: relative;
-  width: 100%;
-  aspect-ratio: 1 / 1;
-  background: #ddd;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  overflow: hidden;
-  font-size: 11px;
-  color: #777;
-  text-align: center;
-  padding: 2px;
-}
-.m-thumb img, .m-thumb video {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  max-width: none;
-  margin: 0;
-  border-radius: 0;
-  pointer-events: none;
-}
-.m-play {
-  position: absolute;
-  right: 5px;
-  bottom: 5px;
-  background: rgba(0,0,0,0.55);
-  color: white;
-  font-size: 11px;
-  padding: 2px 6px;
-  border-radius: 10px;
-}
-.m-date { font-size: 10px; color: #666; text-align: center; padding: 4px 2px; }
-
-/* Media ko bada karke dekhne ka viewer */
-#media-viewer {
-  display: none;
-  position: absolute;
-  inset: 0;
-  z-index: 6;
-  flex-direction: column;
-  background: rgba(0,0,0,0.94);
-}
-.viewer-bar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 12px 16px;
-  color: white;
-}
-.viewer-bar button {
-  border: none;
-  background: transparent;
-  color: white;
-  font-size: 18px;
-  cursor: pointer;
-}
-.viewer-bar a { color: #8ecbff; font-size: 14px; }
-#viewer-body {
-  flex: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 8px;
-  min-height: 0;
-}
-#viewer-body img, #viewer-body video {
-  max-width: 100%;
-  max-height: 100%;
-  margin: 0;
-}
-#viewer-body .viewer-missing { color: #ccc; font-size: 14px; }
 </style>
 </head>
 <body>
@@ -422,7 +374,12 @@ body.swiping { user-select: none; -webkit-user-select: none; }
 
   <!-- Normal chat -->
   <div id="messages"></div>
-  <div id="typing-indicator" class="typing-line"></div>
+  <div id="typing-indicator">
+    <!-- BADLAV 1: 👀 -->
+    <span id="buddy-face">👀</span>
+    <div id="buddy-cloud"><span class="dot"></span><span class="dot"></span><span class="dot"></span></div>
+    <span id="buddy-label"></span>
+  </div>
   <div id="reply-preview" class="reply-preview">
     <div class="rp-text" id="rp-text"></div>
     <button onclick="cancelReply()">&#10006;</button>
@@ -453,14 +410,10 @@ body.swiping { user-select: none; -webkit-user-select: none; }
   <div id="history-panel" class="overlay">
     <div class="secret-box">
       <div class="secret-head">
-        <span class="secret-title">
-          <span>&#10084;&#65039; Secret chat</span>
-          <button id="media-btn" onclick="openMediaPanel()">&#128444;&#65039; Media</button>
-        </span>
+        <span>&#10084;&#65039; Secret chat</span>
         <button onclick="closeHistory()">&#10006;</button>
       </div>
       <div id="history-list"></div>
-      <div id="secret-typing" class="typing-line"></div>
       <div id="secret-reply-preview" class="reply-preview">
         <div class="rp-text" id="secret-rp-text"></div>
         <button onclick="cancelSecretReply()">&#10006;</button>
@@ -470,26 +423,6 @@ body.swiping { user-select: none; -webkit-user-select: none; }
         <input type="file" id="secret-media-input" accept="image/*,video/*">
         <input type="text" id="secret-msg-input" placeholder="Secret message">
         <button onclick="sendSecretMessage()">&#10148;</button>
-      </div>
-
-      <!-- Media panel: secret chat ka saara media chhote boxes mein, date ke saath -->
-      <div id="media-panel">
-        <div class="secret-head">
-          <span class="secret-title">
-            <button onclick="closeMediaPanel()">&#8592;</button>
-            <span>Media</span>
-          </span>
-        </div>
-        <div id="media-grid"></div>
-      </div>
-
-      <!-- Media ko bada karke dekhne ke liye -->
-      <div id="media-viewer">
-        <div class="viewer-bar">
-          <button onclick="closeViewer()">&#10006;</button>
-          <a id="viewer-download" href="#" download>Download</a>
-        </div>
-        <div id="viewer-body"></div>
       </div>
     </div>
   </div>
@@ -527,17 +460,11 @@ function sendMessage() {
   stopTyping();
 }
 
-/* ---------- Typing indicator (normal chat) ---------- */
+/* ---------- Typing buddy (normal chat) ---------- */
 const msgInput = document.getElementById('msg-input');
-const typingLine = document.getElementById('typing-indicator');
-
-// "Name is typing..." ya "A, B are typing..." ka text banata hai
-function typingLabel(set) {
-  const names = Array.from(set);
-  if (names.length === 0) return '';
-  if (names.length === 1) return names[0] + ' is typing...';
-  return names.join(', ') + ' are typing...';
-}
+const buddyFace = document.getElementById('buddy-face');
+const buddyCloud = document.getElementById('buddy-cloud');
+const buddyLabel = document.getElementById('buddy-label');
 
 msgInput.addEventListener('input', () => {
   if (!isTyping) { isTyping = true; socket.emit('typing'); }
@@ -553,9 +480,35 @@ function stopTyping() {
 socket.on('typing', ({ name }) => { typingUsers.add(name); updateTypingText(); });
 socket.on('stop-typing', ({ name }) => { typingUsers.delete(name); updateTypingText(); });
 
+// Koi type kar raha ho to character soch mein aa jata hai aur badal mein dots uchhalte hain
 function updateTypingText() {
-  typingLine.innerText = typingLabel(typingUsers);
+  const names = Array.from(typingUsers);
+  if (names.length === 0) {
+    buddyCloud.classList.remove('show');
+    buddyLabel.innerText = '';
+    buddyFace.classList.remove('tongue');
+    // BADLAV 2: pehle '\uD83D\uDE0A' tha, ab '👀'
+    buddyFace.innerText = '👀';
+  } else {
+    buddyCloud.classList.add('show');
+    buddyLabel.innerText = names.join(', ');
+    buddyFace.classList.remove('tongue');
+    buddyFace.innerText = '\uD83E\uDD14';
+  }
 }
+
+// Jab koi type nahi kar raha, character kabhi kabhi jeebh nikalta hai
+setInterval(() => {
+  if (typingUsers.size > 0) return;
+  buddyFace.innerText = '\uD83D\uDE1B';
+  buddyFace.classList.add('tongue');
+  setTimeout(() => {
+    if (typingUsers.size > 0) return;
+    buddyFace.classList.remove('tongue');
+    // BADLAV 2: yahan bhi '\uD83D\uDE0A' ki jagah '👀'
+    buddyFace.innerText = '👀';
+  }, 900);
+}, 6000);
 
 /* ---------- Reply (normal chat) ---------- */
 function startReply(id, name, preview) {
@@ -731,49 +684,16 @@ function buildMediaItem(id, name, url, type, mine, replyTo, ts) {
     label = '\uD83C\uDFA5 Video';
   }
   wrap._reply = { id, name, preview: label };
-  // BADLAV: download ka naam extension ke saath (.png / .mp4 etc.)
   wrap.innerHTML =
     '<div class="sender">' + (mine ? '' : escapeHtml(name)) + '</div>' +
     (ts ? '<div class="time">' + escapeHtml(new Date(ts).toLocaleString()) + '</div>' : '') +
     '<div class="bubble">' + buildQuotedHtml(replyTo) + mediaTag +
-    '<br><a href="' + url + '" download="' + escapeHtml(downloadName(url, type)) + '">Download</a></div>';
+    '<br><a href="' + url + '" download>Download</a></div>';
   return wrap;
 }
 
-/* ---------- Download ka naam extension ke saath ---------- */
-const TYPE_EXT = {
-  'image/png': '.png',
-  'image/jpeg': '.jpg',
-  'image/jpg': '.jpg',
-  'image/gif': '.gif',
-  'image/webp': '.webp',
-  'image/heic': '.heic',
-  'image/heif': '.heif',
-  'video/mp4': '.mp4',
-  'video/quicktime': '.mov',
-  'video/webm': '.webm',
-  'video/3gpp': '.3gp',
-  'video/x-matroska': '.mkv'
-};
-
-function guessExt(type) {
-  if (type && TYPE_EXT[type]) return TYPE_EXT[type];
-  if (type && type.indexOf('/') > -1) {
-    const sub = type.split('/')[1].split(';')[0].replace(/[^a-z0-9]/gi, '').toLowerCase();
-    if (sub) return '.' + sub;
-  }
-  return '';
-}
-
-function downloadName(url, type) {
-  const clean = String(url).split('?')[0].split('#')[0];
-  const base = clean.substring(clean.lastIndexOf('/') + 1) || 'file';
-  // Naam mein pehle se extension ho to wahi rakho, warna type dekhkar laga do
-  if (/\.[a-z0-9]{1,5}$/i.test(base)) return base;
-  return base + guessExt(type);
-}
-
-/* ---------- Hold karne par apna text message edit mode mein aata hai ---------- */
+/* ---------- Hold karne par edit button dikhana ---------- */
+/* BADLAV 4: hold karne par message seedha neeche ke input box mein edit hone aata hai */
 let editHoldTimer = null;
 let editingWrap = null;
 
@@ -938,10 +858,6 @@ heartBtn.addEventListener('contextmenu', (e) => e.preventDefault());
 const historyPanel = document.getElementById('history-panel');
 const historyList = document.getElementById('history-list');
 const secretMsgInput = document.getElementById('secret-msg-input');
-const secretTypingLine = document.getElementById('secret-typing');
-const secretTypingUsers = new Set();
-let secretTypingTimeout = null;
-let secretIsTyping = false;
 
 // Sahi password par server purane secret messages bhejta hai
 socket.on('history', (items) => {
@@ -964,8 +880,6 @@ socket.on('history', (items) => {
 // Naya secret message (sirf unlock kiye hue logon ko aata hai)
 socket.on('secret-message', (m) => {
   if (historyPanel.style.display !== 'flex') return;
-  secretTypingUsers.delete(m.name);
-  updateSecretTypingText();
   addSecretItem(m);
   historyList.scrollTop = historyList.scrollHeight;
 });
@@ -1005,32 +919,11 @@ function sendSecretMessage() {
   socket.emit('secret-message', { message: text, replyTo: secretReplyingTo });
   secretMsgInput.value = '';
   cancelSecretReply();
-  stopSecretTyping();
 }
 
 secretMsgInput.addEventListener('keypress', (e) => {
   if (e.key === 'Enter') sendSecretMessage();
 });
-
-/* ---------- Typing indicator (secret chat) ---------- */
-function updateSecretTypingText() {
-  secretTypingLine.innerText = typingLabel(secretTypingUsers);
-}
-
-secretMsgInput.addEventListener('input', () => {
-  if (editingWrap) return; // edit karte waqt typing nahi dikhana
-  if (!secretIsTyping) { secretIsTyping = true; socket.emit('secret-typing'); }
-  clearTimeout(secretTypingTimeout);
-  secretTypingTimeout = setTimeout(stopSecretTyping, 1500);
-});
-
-function stopSecretTyping() {
-  clearTimeout(secretTypingTimeout);
-  if (secretIsTyping) { secretIsTyping = false; socket.emit('secret-stop-typing'); }
-}
-
-socket.on('secret-typing', ({ name }) => { secretTypingUsers.add(name); updateSecretTypingText(); });
-socket.on('secret-stop-typing', ({ name }) => { secretTypingUsers.delete(name); updateSecretTypingText(); });
 
 document.getElementById('secret-media-input').addEventListener('change', async (e) => {
   const file = e.target.files[0];
@@ -1053,148 +946,11 @@ document.getElementById('secret-media-input').addEventListener('change', async (
 });
 
 function closeHistory() {
-  closeMediaPanel();
   cancelEdit();
-  stopSecretTyping();
-  secretTypingUsers.clear();
-  updateSecretTypingText();
   secretMsgInput.value = '';
   historyPanel.style.display = 'none';
   historyList.innerHTML = '';
   cancelSecretReply();
-}
-
-/* ---------- Media panel (secret chat ka saara media) ---------- */
-const mediaPanel = document.getElementById('media-panel');
-const mediaGrid = document.getElementById('media-grid');
-const mediaViewer = document.getElementById('media-viewer');
-const viewerBody = document.getElementById('viewer-body');
-const viewerDownload = document.getElementById('viewer-download');
-
-function openMediaPanel() {
-  mediaPanel.style.display = 'flex';
-  mediaGrid.innerHTML = '<div class="hist-empty">Loading...</div>';
-  socket.emit('get-secret-media');
-}
-
-function closeMediaPanel() {
-  closeViewer();
-  mediaPanel.style.display = 'none';
-  mediaGrid.innerHTML = '';
-}
-
-socket.on('secret-media-list', (items) => {
-  if (mediaPanel.style.display !== 'flex') return;
-  mediaGrid.innerHTML = '';
-  if (!items.length) {
-    const empty = document.createElement('div');
-    empty.className = 'hist-empty';
-    empty.innerText = 'Abhi tak koi media nahi hai';
-    mediaGrid.appendChild(empty);
-    return;
-  }
-  items.forEach((m) => mediaGrid.appendChild(buildMediaTile(m)));
-});
-
-socket.on('secret-media-error', (text) => {
-  if (mediaPanel.style.display !== 'flex') return;
-  mediaGrid.innerHTML = '';
-  const err = document.createElement('div');
-  err.className = 'hist-empty';
-  err.innerText = text;
-  mediaGrid.appendChild(err);
-});
-
-function buildMediaTile(m) {
-  const tile = document.createElement('div');
-  tile.className = 'm-tile';
-
-  const thumb = document.createElement('div');
-  thumb.className = 'm-thumb';
-
-  const isImage = m.type && m.type.startsWith('image/');
-  const isVideo = m.type && m.type.startsWith('video/');
-
-  // Agar purani file server se hat chuki ho to "Not available" dikhao
-  function showMissing() {
-    thumb.innerText = 'Not available';
-  }
-
-  if (isImage) {
-    const img = document.createElement('img');
-    img.loading = 'lazy';
-    img.src = m.url;
-    img.onerror = showMissing;
-    thumb.appendChild(img);
-  } else if (isVideo) {
-    const v = document.createElement('video');
-    v.src = m.url + '#t=0.1';
-    v.preload = 'metadata';
-    v.muted = true;
-    v.playsInline = true;
-    v.onerror = showMissing;
-    thumb.appendChild(v);
-    const play = document.createElement('span');
-    play.className = 'm-play';
-    play.innerText = '\u25B6';
-    thumb.appendChild(play);
-  } else {
-    thumb.innerText = '\uD83D\uDCCE File';
-  }
-
-  const date = document.createElement('div');
-  date.className = 'm-date';
-  date.innerText = m.ts
-    ? new Date(m.ts).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })
-    : '';
-
-  tile.appendChild(thumb);
-  tile.appendChild(date);
-  tile.addEventListener('click', () => openViewer(m));
-  return tile;
-}
-
-function openViewer(m) {
-  viewerBody.innerHTML = '';
-  const isImage = m.type && m.type.startsWith('image/');
-  const isVideo = m.type && m.type.startsWith('video/');
-
-  function showMissing() {
-    viewerBody.innerHTML = '';
-    const msg = document.createElement('div');
-    msg.className = 'viewer-missing';
-    msg.innerText = 'Ye media ab available nahi hai';
-    viewerBody.appendChild(msg);
-  }
-
-  if (isImage) {
-    const img = document.createElement('img');
-    img.src = m.url;
-    img.onerror = showMissing;
-    viewerBody.appendChild(img);
-  } else if (isVideo) {
-    const v = document.createElement('video');
-    v.src = m.url;
-    v.controls = true;
-    v.autoplay = true;
-    v.playsInline = true;
-    v.onerror = showMissing;
-    viewerBody.appendChild(v);
-  } else {
-    const msg = document.createElement('div');
-    msg.className = 'viewer-missing';
-    msg.innerText = '\uD83D\uDCCE File';
-    viewerBody.appendChild(msg);
-  }
-
-  viewerDownload.href = m.url;
-  viewerDownload.setAttribute('download', downloadName(m.url, m.type));
-  mediaViewer.style.display = 'flex';
-}
-
-function closeViewer() {
-  mediaViewer.style.display = 'none';
-  viewerBody.innerHTML = ''; // video chal raha ho to band ho jaye
 }
 
 /* ---------- Helpers ---------- */
@@ -1209,7 +965,7 @@ function escapeHtml(str) {
   return div.innerHTML;
 }
 
-/* Text mein jo bhi link ho use neela clickable link bana deta hai (naye tab mein khulta hai) */
+/* BADLAV 5: text mein jo bhi link ho use neela clickable link bana deta hai (naye tab mein khulta hai) */
 function linkify(text) {
   const safe = escapeHtml(text);
   return safe.replace(/((https?:\/\/|www\.)[^\s<]+)/gi, (m) => {
