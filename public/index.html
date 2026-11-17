@@ -130,13 +130,19 @@ body.swiping { user-select: none; -webkit-user-select: none; }
 .system-msg { text-align: center; color: #999; font-size: 13px; margin: 8px 0; }
 .hist-empty { text-align: center; color: #999; margin-top: 30px; font-size: 14px; }
 
-/* Edit button (sirf apne text messages par) */
-/* BADLAV 3: pencil button nahi hai. Hold karne par message edit mode mein jata hai aur peela outline dikhta hai */
+/* Jo message abhi gaya nahi (network nahi hai) - ghadi wala nishan */
+.msg.pending .bubble { opacity: 0.7; }
+.msg .clock { font-size: 11px; margin-left: 6px; }
+
+/* Double tap se laga dil */
+.msg .hearts { font-size: 13px; margin-top: 2px; }
+
+/* Edit: hold karne par message edit mode mein jata hai aur peela outline dikhta hai */
 .msg.editing .bubble { outline: 3px solid #ffd54f; }
 .msg { -webkit-touch-callout: none; }
 .edited-tag { font-size: 10px; opacity: 0.7; margin-left: 4px; }
 
-/* BADLAV 5: links neele rang mein dikhenge (apne purple bubble mein halka neela) */
+/* Links neele rang mein dikhenge (apne purple bubble mein halka neela) */
 .msg a.chat-link { color: #1a73e8; text-decoration: underline; word-break: break-all; }
 .msg.mine a.chat-link { color: #8ecbff; }
 
@@ -156,79 +162,16 @@ body.swiping { user-select: none; -webkit-user-select: none; }
 /* Highlight jab quoted message pe click ho */
 .msg.highlight .bubble { outline: 3px solid #ffd54f; }
 
-/* Typing buddy (Snapchat jaisa character + soch wala badal) */
-#typing-indicator {
-  height: 50px;
-  padding: 0 16px 4px;
+/* Typing indicator (sada text: "Naam is typing...") - normal aur secret dono mein */
+.typing-line {
+  height: 22px;
+  padding: 2px 16px 0;
   background: #f5f5f5;
-  display: flex;
-  align-items: flex-end;
-  gap: 6px;
-}
-#buddy-face {
-  font-size: 32px;
-  line-height: 1;
-  display: inline-block;
-  user-select: none;
-  -webkit-user-select: none;
-}
-#buddy-face.tongue { animation: buddyWiggle 0.7s ease; }
-#buddy-cloud {
-  display: none;
-  position: relative;
-  background: #e4e4e4;
-  border-radius: 16px;
-  padding: 7px 12px;
-  margin-bottom: 12px;
-  margin-left: 6px;
-}
-#buddy-cloud.show { display: flex; align-items: center; gap: 4px; }
-#buddy-cloud::before {
-  content: '';
-  position: absolute;
-  left: -7px;
-  bottom: 2px;
-  width: 9px;
-  height: 9px;
-  background: #e4e4e4;
-  border-radius: 50%;
-}
-#buddy-cloud::after {
-  content: '';
-  position: absolute;
-  left: -13px;
-  bottom: -4px;
-  width: 5px;
-  height: 5px;
-  background: #e4e4e4;
-  border-radius: 50%;
-}
-#buddy-cloud .dot {
-  width: 7px;
-  height: 7px;
-  background: #777;
-  border-radius: 50%;
-  animation: buddyDot 1s infinite;
-}
-#buddy-cloud .dot:nth-child(2) { animation-delay: 0.2s; }
-#buddy-cloud .dot:nth-child(3) { animation-delay: 0.4s; }
-#buddy-label {
-  font-size: 11px;
+  font-size: 12px;
   color: #764ba2;
-  margin-bottom: 14px;
-  max-width: 130px;
+  white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  white-space: nowrap;
-}
-@keyframes buddyDot {
-  0%, 60%, 100% { transform: translateY(0); opacity: 0.4; }
-  30% { transform: translateY(-5px); opacity: 1; }
-}
-@keyframes buddyWiggle {
-  0%, 100% { transform: rotate(0deg); }
-  25% { transform: rotate(-12deg); }
-  75% { transform: rotate(12deg); }
 }
 
 /* Reply preview (input ke upar) */
@@ -374,12 +317,7 @@ body.swiping { user-select: none; -webkit-user-select: none; }
 
   <!-- Normal chat -->
   <div id="messages"></div>
-  <div id="typing-indicator">
-    <!-- BADLAV 1: 👀 -->
-    <span id="buddy-face">👀</span>
-    <div id="buddy-cloud"><span class="dot"></span><span class="dot"></span><span class="dot"></span></div>
-    <span id="buddy-label"></span>
-  </div>
+  <div id="typing-indicator" class="typing-line"></div>
   <div id="reply-preview" class="reply-preview">
     <div class="rp-text" id="rp-text"></div>
     <button onclick="cancelReply()">&#10006;</button>
@@ -414,6 +352,7 @@ body.swiping { user-select: none; -webkit-user-select: none; }
         <button onclick="closeHistory()">&#10006;</button>
       </div>
       <div id="history-list"></div>
+      <div id="secret-typing-indicator" class="typing-line"></div>
       <div id="secret-reply-preview" class="reply-preview">
         <div class="rp-text" id="secret-rp-text"></div>
         <button onclick="cancelSecretReply()">&#10006;</button>
@@ -431,84 +370,211 @@ body.swiping { user-select: none; -webkit-user-select: none; }
 <script src="/socket.io/socket.io.js"></script>
 <script>
 const socket = io();
+
+// Page ke important elements (sabse upar taaki neeche ke code mein kaam aayein)
+const messagesBox = document.getElementById('messages');
+const historyList = document.getElementById('history-list');
+const historyPanel = document.getElementById('history-panel');
+const msgInput = document.getElementById('msg-input');
+const secretMsgInput = document.getElementById('secret-msg-input');
+const typingLine = document.getElementById('typing-indicator');
+const secretTypingLine = document.getElementById('secret-typing-indicator');
+
 let myName = "";
+let myRoom = "";
+let joined = false;
 let replyingTo = null;
 let secretReplyingTo = null;
 let typingTimeout = null;
 let isTyping = false;
+let secretTypingTimeout = null;
+let secretIsTyping = false;
 const typingUsers = new Set();
+const secretTypingUsers = new Set();
+
+/* Jo messages network na hone ki wajah se ruke hue hain (sirf page khula rehne tak) */
+const pending = [];        // normal chat
+const pendingSecret = [];  // secret chat
+let pendingCounter = 0;
+
+/* Dobara jodne ke liye */
+let hadConnected = false;
+let awaitingRejoin = false;
+let awaitingSecret = false;
+let secretPass = '';   // sirf memory mein, refresh karte hi hat jata hai
+let triedPass = '';
+
+function secretIsOpen() {
+  return historyPanel.style.display === 'flex';
+}
 
 function joinRoom() {
   const name = document.getElementById('name-input').value.trim();
   const room = document.getElementById('room-input').value.trim();
   if (!name || !room) return alert("Please enter name and room code");
   myName = name;
+  myRoom = room;
+  joined = true;
   socket.emit('join-room', { name, roomCode: room });
   document.getElementById('join-screen').style.display = 'none';
   document.getElementById('chat-screen').style.display = 'flex';
   document.getElementById('room-label').innerText = room;
 }
 
+/* ---------- Network toot-ne par apne aap dobara jodna ---------- */
+socket.on('connect', () => {
+  if (!hadConnected) { hadConnected = true; return; } // pehli baar ka connect, kuch nahi karna
+  if (!joined) return;
+
+  typingUsers.clear();
+  secretTypingUsers.clear();
+  renderTyping(typingLine, typingUsers);
+  renderTyping(secretTypingLine, secretTypingUsers);
+
+  // Room mein wapas judo (rejoin: true taaki "joined" ka message dobara na aaye)
+  awaitingRejoin = true;
+  socket.emit('join-room', { name: myName, roomCode: myRoom, rejoin: true });
+
+  // Agar secret chat khuli thi to use bhi apne aap unlock karo
+  if (secretIsOpen() && secretPass) {
+    awaitingSecret = true;
+    socket.emit('unlock-history', { password: secretPass, rejoin: true });
+  }
+
+  // Agar server ka jawab na aaye to bhi ruke hue messages bhej do
+  setTimeout(() => { if (awaitingRejoin) flushPending(); }, 2500);
+});
+
+socket.on('disconnect', (reason) => {
+  typingUsers.clear();
+  secretTypingUsers.clear();
+  renderTyping(typingLine, typingUsers);
+  renderTyping(secretTypingLine, secretTypingUsers);
+  isTyping = false;
+  secretIsTyping = false;
+  // Agar server ne khud kaata hai to browser apne aap try nahi karta, hum karenge
+  if (reason === 'io server disconnect') socket.connect();
+});
+
+window.addEventListener('online', () => {
+  if (joined && !socket.connected) socket.connect();
+});
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden && joined && !socket.connected) socket.connect();
+});
+
+function flushPending() {
+  awaitingRejoin = false;
+  if (!socket.connected) return;
+  while (pending.length) {
+    const p = pending.shift();
+    p.el.remove();
+    socket.emit(p.event, p.payload);
+  }
+}
+
+function flushSecretPending() {
+  awaitingSecret = false;
+  if (!socket.connected) return;
+  while (pendingSecret.length) {
+    const p = pendingSecret.shift();
+    p.el.remove();
+    socket.emit(p.event, p.payload);
+  }
+}
+
+// Network nahi hai to message ghadi ke nishan ke saath screen par ruka rehta hai
+function queueMessage(isSecret, event, payload) {
+  const id = 'pending-' + (++pendingCounter);
+  let el;
+  if (event.indexOf('media') !== -1) {
+    el = buildMediaItem(id, myName, payload.url, payload.type, true, payload.replyTo, null);
+    const dl = el.querySelector('a[download]');
+    if (dl) dl.remove();
+  } else {
+    el = buildTextItem(id, myName, payload.message, true, payload.replyTo, null, false);
+  }
+  el._editable = false;
+  el._reply = null;
+  el.classList.add('pending');
+  const clock = document.createElement('span');
+  clock.className = 'clock';
+  clock.innerText = '\uD83D\uDD53';
+  el.querySelector('.bubble').appendChild(clock);
+
+  (isSecret ? pendingSecret : pending).push({ event, payload, el });
+  const box = isSecret ? historyList : messagesBox;
+  box.appendChild(el);
+  box.scrollTop = box.scrollHeight;
+}
+
+function sendOrQueue(isSecret, event, payload) {
+  if (socket.connected) socket.emit(event, payload);
+  else queueMessage(isSecret, event, payload);
+}
+
 function sendMessage() {
-  const input = document.getElementById('msg-input');
+  const input = msgInput;
   if (trySubmitEdit(input)) return;
   const text = input.value.trim();
   if (!text) return;
-  socket.emit('chat-message', { message: text, replyTo: replyingTo });
+  sendOrQueue(false, 'chat-message', { message: text, replyTo: replyingTo });
   input.value = '';
   cancelReply();
   stopTyping();
 }
 
-/* ---------- Typing buddy (normal chat) ---------- */
-const msgInput = document.getElementById('msg-input');
-const buddyFace = document.getElementById('buddy-face');
-const buddyCloud = document.getElementById('buddy-cloud');
-const buddyLabel = document.getElementById('buddy-label');
+/* ---------- Typing indicator (sada text, normal chat) ---------- */
+function renderTyping(el, set) {
+  const names = Array.from(set);
+  if (names.length === 0) el.innerText = '';
+  else el.innerText = names.join(', ') + (names.length > 1 ? ' are typing...' : ' is typing...');
+}
+
+function updateTypingText() {
+  renderTyping(typingLine, typingUsers);
+}
 
 msgInput.addEventListener('input', () => {
-  if (!isTyping) { isTyping = true; socket.emit('typing'); }
+  if (!isTyping && socket.connected) { isTyping = true; socket.emit('typing'); }
   clearTimeout(typingTimeout);
   typingTimeout = setTimeout(stopTyping, 1500);
 });
 
 function stopTyping() {
   clearTimeout(typingTimeout);
-  if (isTyping) { isTyping = false; socket.emit('stop-typing'); }
+  if (isTyping) {
+    isTyping = false;
+    if (socket.connected) socket.emit('stop-typing');
+  }
 }
 
 socket.on('typing', ({ name }) => { typingUsers.add(name); updateTypingText(); });
 socket.on('stop-typing', ({ name }) => { typingUsers.delete(name); updateTypingText(); });
 
-// Koi type kar raha ho to character soch mein aa jata hai aur badal mein dots uchhalte hain
-function updateTypingText() {
-  const names = Array.from(typingUsers);
-  if (names.length === 0) {
-    buddyCloud.classList.remove('show');
-    buddyLabel.innerText = '';
-    buddyFace.classList.remove('tongue');
-    // BADLAV 2: pehle '\uD83D\uDE0A' tha, ab '👀'
-    buddyFace.innerText = '👀';
-  } else {
-    buddyCloud.classList.add('show');
-    buddyLabel.innerText = names.join(', ');
-    buddyFace.classList.remove('tongue');
-    buddyFace.innerText = '\uD83E\uDD14';
+/* ---------- Typing indicator (secret chat) ---------- */
+secretMsgInput.addEventListener('input', () => {
+  if (!secretIsTyping && socket.connected) { secretIsTyping = true; socket.emit('secret-typing'); }
+  clearTimeout(secretTypingTimeout);
+  secretTypingTimeout = setTimeout(stopSecretTyping, 1500);
+});
+
+function stopSecretTyping() {
+  clearTimeout(secretTypingTimeout);
+  if (secretIsTyping) {
+    secretIsTyping = false;
+    if (socket.connected) socket.emit('secret-stop-typing');
   }
 }
 
-// Jab koi type nahi kar raha, character kabhi kabhi jeebh nikalta hai
-setInterval(() => {
-  if (typingUsers.size > 0) return;
-  buddyFace.innerText = '\uD83D\uDE1B';
-  buddyFace.classList.add('tongue');
-  setTimeout(() => {
-    if (typingUsers.size > 0) return;
-    buddyFace.classList.remove('tongue');
-    // BADLAV 2: yahan bhi '\uD83D\uDE0A' ki jagah '👀'
-    buddyFace.innerText = '👀';
-  }, 900);
-}, 6000);
+socket.on('secret-typing', ({ name }) => {
+  secretTypingUsers.add(name);
+  renderTyping(secretTypingLine, secretTypingUsers);
+});
+socket.on('secret-stop-typing', ({ name }) => {
+  secretTypingUsers.delete(name);
+  renderTyping(secretTypingLine, secretTypingUsers);
+});
 
 /* ---------- Reply (normal chat) ---------- */
 function startReply(id, name, preview) {
@@ -539,6 +605,8 @@ function buildQuotedHtml(replyTo) {
 }
 
 /* ---------- Swipe to reply (normal aur secret dono chat ke liye) ---------- */
+let suppressTapUntil = 0; // swipe/hold ke baad galti se double-tap na ginna
+
 function attachSwipe(container, onTrigger) {
   const SWIPE_TRIGGER = 40;
   const SWIPE_MAX = 56;
@@ -584,14 +652,67 @@ function attachSwipe(container, onTrigger) {
     s.el.style.transform = '';
     s.el.style.setProperty('--swipe', 0);
     s.el.classList.remove('swipe-ready');
+    if (s.active) suppressTapUntil = Date.now() + 500;
     if (s.active && s.dx >= SWIPE_TRIGGER) onTrigger(s.el._reply);
   }
   window.addEventListener('pointerup', endSwipe);
   window.addEventListener('pointercancel', endSwipe);
 }
 
-attachSwipe(document.getElementById('messages'), (r) => startReply(r.id, r.name, r.preview));
-attachSwipe(document.getElementById('history-list'), (r) => startSecretReply(r));
+attachSwipe(messagesBox, (r) => startReply(r.id, r.name, r.preview));
+attachSwipe(historyList, (r) => startSecretReply(r));
+
+/* ---------- Double tap se dil (normal aur secret dono chat) ---------- */
+let lastTap = { el: null, t: 0 };
+
+function attachDoubleTap(container) {
+  container.addEventListener('click', (e) => {
+    if (Date.now() < suppressTapUntil) return;
+    if (e.target.closest('a, video, button, .quoted')) return;
+    const el = e.target.closest('.msg');
+    if (!el) return;
+    const now = Date.now();
+    if (lastTap.el === el && now - lastTap.t < 350) {
+      lastTap = { el: null, t: 0 };
+      toggleHeart(container, el);
+    } else {
+      lastTap = { el: el, t: now };
+    }
+  });
+}
+attachDoubleTap(messagesBox);
+attachDoubleTap(historyList);
+
+function toggleHeart(container, el) {
+  const id = el.getAttribute('data-id');
+  if (!id || id.indexOf('pending-') === 0 || !socket.connected) return;
+  const isSecret = container === historyList;
+  const on = !(el._hearts && el._hearts.has(myName));
+  socket.emit(isSecret ? 'secret-heart' : 'heart', { id: id, on: on });
+}
+
+function renderHearts(el) {
+  let h = el.querySelector('.hearts');
+  const n = el._hearts ? el._hearts.size : 0;
+  if (!n) { if (h) h.remove(); return; }
+  if (!h) {
+    h = document.createElement('div');
+    h.className = 'hearts';
+    el.appendChild(h);
+  }
+  h.innerText = '\u2764\uFE0F' + (n > 1 ? ' ' + n : '');
+}
+
+function applyHeart(container, id, name, on) {
+  const el = container.querySelector('[data-id="' + id + '"]');
+  if (!el) return;
+  if (!el._hearts) el._hearts = new Set();
+  if (on) el._hearts.add(name); else el._hearts.delete(name);
+  renderHearts(el);
+}
+
+socket.on('heart', ({ id, name, on }) => applyHeart(messagesBox, id, name, on));
+socket.on('secret-heart', ({ id, name, on }) => applyHeart(historyList, id, name, on));
 
 /* ---------- Media upload (normal chat) ---------- */
 msgInput.addEventListener('keypress', (e) => {
@@ -609,7 +730,7 @@ document.getElementById('media-input').addEventListener('change', async (e) => {
     const res = await fetch('/upload', { method: 'POST', body: formData });
     const result = await res.json();
     if (result.url) {
-      socket.emit('media-message', { url: result.url, type: result.type, replyTo: replyingTo });
+      sendOrQueue(false, 'media-message', { url: result.url, type: result.type, replyTo: replyingTo });
       cancelReply();
     }
   } catch (err) {
@@ -635,19 +756,19 @@ socket.on('system-message', (text) => {
   const div = document.createElement('div');
   div.className = 'system-msg';
   div.innerText = text;
-  document.getElementById('messages').appendChild(div);
+  messagesBox.appendChild(div);
   scrollDown();
 });
 
 function addTextMessage(id, name, text, mine, replyTo) {
   const wrap = buildTextItem(id, name, text, mine, replyTo, null, false);
-  document.getElementById('messages').appendChild(wrap);
+  messagesBox.appendChild(wrap);
   scrollDown();
 }
 
 function addMediaMessage(id, name, url, type, mine, replyTo) {
   const wrap = buildMediaItem(id, name, url, type, mine, replyTo, null);
-  document.getElementById('messages').appendChild(wrap);
+  messagesBox.appendChild(wrap);
   scrollDown();
 }
 
@@ -692,8 +813,7 @@ function buildMediaItem(id, name, url, type, mine, replyTo, ts) {
   return wrap;
 }
 
-/* ---------- Hold karne par edit button dikhana ---------- */
-/* BADLAV 4: hold karne par message seedha neeche ke input box mein edit hone aata hai */
+/* ---------- Hold karne par message edit hone aata hai ---------- */
 let editHoldTimer = null;
 let editingWrap = null;
 
@@ -712,13 +832,14 @@ function attachHoldEdit(container) {
     if (e.target.closest('.msg.mine')) e.preventDefault();
   });
 }
-attachHoldEdit(document.getElementById('messages'));
-attachHoldEdit(document.getElementById('history-list'));
+attachHoldEdit(messagesBox);
+attachHoldEdit(historyList);
 
 function startEdit(el) {
   const isSecret = !!el.closest('#history-list');
   const textEl = el.querySelector('.msg-text');
   if (!textEl) return;
+  suppressTapUntil = Date.now() + 800;
   cancelEdit();
   editingWrap = el;
   el.classList.add('editing');
@@ -771,7 +892,7 @@ function applyEdit(container, id, newText) {
 }
 
 socket.on('message-edited', ({ id, newText }) => {
-  applyEdit(document.getElementById('messages'), id, newText);
+  applyEdit(messagesBox, id, newText);
 });
 
 /* ---------- Permanent room ---------- */
@@ -786,6 +907,8 @@ socket.on('room-info', ({ permanent }) => {
   permBtn.style.display = permanent ? 'none' : 'inline-block';
   heartBtn.style.display = permanent ? 'inline-block' : 'none';
   if (permanent && modalMode === 'make' && modal.style.display === 'flex') closeModal();
+  // Dobara judne ke baad ruke hue normal messages bhej do
+  if (awaitingRejoin) flushPending();
 });
 
 function openModal(mode) {
@@ -826,6 +949,7 @@ function submitModal() {
     socket.emit('make-permanent', { password: pass });
   } else if (modalMode === 'unlock') {
     if (!pass) return setModalError('Password likho');
+    triedPass = pass;
     socket.emit('unlock-history', { password: pass });
   }
 }
@@ -838,7 +962,7 @@ document.getElementById('modal-cancel').addEventListener('click', closeModal);
 });
 
 socket.on('permanent-error', (text) => setModalError(text));
-socket.on('history-error', (text) => setModalError(text));
+socket.on('history-error', (text) => { triedPass = ''; setModalError(text); });
 
 // Dil wale emoji ko hold karne par password box khulega
 let holdTimer = null;
@@ -855,13 +979,19 @@ heartBtn.addEventListener('pointerdown', () => {
 heartBtn.addEventListener('contextmenu', (e) => e.preventDefault());
 
 /* ---------- Secret chat ---------- */
-const historyPanel = document.getElementById('history-panel');
-const historyList = document.getElementById('history-list');
-const secretMsgInput = document.getElementById('secret-msg-input');
 
 // Sahi password par server purane secret messages bhejta hai
 socket.on('history', (items) => {
   closeModal();
+  if (triedPass) { secretPass = triedPass; triedPass = ''; }
+
+  const wasOpen = secretIsOpen();
+  // Agar edit chal raha tha to dobara list banne se pehle band kar do
+  if (wasOpen && editingWrap && historyList.contains(editingWrap)) {
+    cancelEdit();
+    secretMsgInput.value = '';
+  }
+
   historyList.innerHTML = '';
   if (!items.length) {
     const empty = document.createElement('div');
@@ -872,14 +1002,25 @@ socket.on('history', (items) => {
   } else {
     items.forEach(addSecretItem);
   }
+  // Jo secret messages ruke hue the wo ghadi ke saath neeche dikhte rahein
+  pendingSecret.forEach((p) => {
+    const empty = document.getElementById('hist-empty');
+    if (empty) empty.remove();
+    historyList.appendChild(p.el);
+  });
+
   historyPanel.style.display = 'flex';
   historyList.scrollTop = historyList.scrollHeight;
-  secretMsgInput.focus();
+  if (!wasOpen) secretMsgInput.focus();
+
+  if (awaitingSecret) flushSecretPending();
 });
 
 // Naya secret message (sirf unlock kiye hue logon ko aata hai)
 socket.on('secret-message', (m) => {
-  if (historyPanel.style.display !== 'flex') return;
+  if (!secretIsOpen()) return;
+  secretTypingUsers.delete(m.name);
+  renderTyping(secretTypingLine, secretTypingUsers);
   addSecretItem(m);
   historyList.scrollTop = historyList.scrollHeight;
 });
@@ -897,6 +1038,10 @@ function addSecretItem(m) {
   const el = (m.kind === 'media' && m.url)
     ? buildMediaItem(m.id, m.name, m.url, m.type, mine, m.replyTo, m.ts)
     : buildTextItem(m.id, m.name, m.message || '', mine, m.replyTo, m.ts, !!m.edited);
+  if (Array.isArray(m.hearts) && m.hearts.length) {
+    el._hearts = new Set(m.hearts);
+    renderHearts(el);
+  }
   historyList.appendChild(el);
 }
 
@@ -916,9 +1061,10 @@ function sendSecretMessage() {
   if (trySubmitEdit(secretMsgInput)) return;
   const text = secretMsgInput.value.trim();
   if (!text) return;
-  socket.emit('secret-message', { message: text, replyTo: secretReplyingTo });
+  sendOrQueue(true, 'secret-message', { message: text, replyTo: secretReplyingTo });
   secretMsgInput.value = '';
   cancelSecretReply();
+  stopSecretTyping();
 }
 
 secretMsgInput.addEventListener('keypress', (e) => {
@@ -936,7 +1082,7 @@ document.getElementById('secret-media-input').addEventListener('change', async (
     const res = await fetch('/upload', { method: 'POST', body: formData });
     const result = await res.json();
     if (result.url) {
-      socket.emit('secret-media-message', { url: result.url, type: result.type, replyTo: secretReplyingTo });
+      sendOrQueue(true, 'secret-media-message', { url: result.url, type: result.type, replyTo: secretReplyingTo });
       cancelSecretReply();
     }
   } catch (err) {
@@ -946,17 +1092,24 @@ document.getElementById('secret-media-input').addEventListener('change', async (
 });
 
 function closeHistory() {
+  stopSecretTyping();
   cancelEdit();
   secretMsgInput.value = '';
   historyPanel.style.display = 'none';
   historyList.innerHTML = '';
   cancelSecretReply();
+  // Khud bahar aaye to ruke hue secret messages aur password dono hat jayein
+  pendingSecret.length = 0;
+  secretPass = '';
+  triedPass = '';
+  awaitingSecret = false;
+  secretTypingUsers.clear();
+  renderTyping(secretTypingLine, secretTypingUsers);
 }
 
 /* ---------- Helpers ---------- */
 function scrollDown() {
-  const box = document.getElementById('messages');
-  box.scrollTop = box.scrollHeight;
+  messagesBox.scrollTop = messagesBox.scrollHeight;
 }
 
 function escapeHtml(str) {
@@ -965,7 +1118,7 @@ function escapeHtml(str) {
   return div.innerHTML;
 }
 
-/* BADLAV 5: text mein jo bhi link ho use neela clickable link bana deta hai (naye tab mein khulta hai) */
+/* Text mein jo bhi link ho use neela clickable link bana deta hai (naye tab mein khulta hai) */
 function linkify(text) {
   const safe = escapeHtml(text);
   return safe.replace(/((https?:\/\/|www\.)[^\s<]+)/gi, (m) => {
