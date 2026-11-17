@@ -92,6 +92,16 @@ async function saveSecretMessage(roomCode, msg) {
   }
 }
 
+// Sirf un sockets ko bhejo jo isi room mein secret chat unlock kar chuke hain
+function emitToUnlocked(roomCode, event, payload, exceptSocket) {
+  for (const [, s] of io.sockets.sockets) {
+    if (exceptSocket && s.id === exceptSocket.id) continue;
+    if (s.data.roomCode === roomCode && s.data.unlocked) {
+      s.emit(event, payload);
+    }
+  }
+}
+
 // Normal chat ke text messages kisne bheje (edit ke time check karne ke liye).
 // Ye sirf server ki memory mein rehta hai, database mein nahi jata.
 const normalMessageOwners = new Map();
@@ -106,18 +116,41 @@ function trackNormalMessage(id, roomCode, name) {
   }
 }
 
+// "left the room" ka message thodi der ruk kar jata hai, taaki network ke chhote
+// jhatke par (jahan banda turant wapas judta hai) bekaar ke joined/left message na aayein
+const LEAVE_GRACE_MS = 8000;
+const leaveTimers = new Map();   // key -> timer (left message abhi bheja nahi)
+const leftAnnounced = new Set(); // key -> left message ja chuka hai
+
+function leaveKey(roomCode, name) {
+  return roomCode + '|' + name;
+}
+
 // ---------- Sockets ----------
 io.on('connection', (socket) => {
   socket.data.failedAttempts = 0;
   socket.data.lockUntil = 0;
   socket.data.unlocked = false; // secret chat ka access mila hai ya nahi
 
-  socket.on('join-room', async ({ name, roomCode }) => {
+  socket.on('join-room', async ({ name, roomCode, rejoin }) => {
     socket.join(roomCode);
     socket.data.name = name;
     socket.data.roomCode = roomCode;
     socket.data.unlocked = false;
-    io.to(roomCode).emit('system-message', `${name} joined the room`);
+
+    // Joined message sirf tab jab sach mein naya banda aaya ho (network jhatke par dobara judna nahi)
+    const key = leaveKey(roomCode, name);
+    let announce = !rejoin;
+    const timer = leaveTimers.get(key);
+    if (timer) {
+      clearTimeout(timer);
+      leaveTimers.delete(key);
+      // Page refresh karke aaya hai to pehle "left" dikha do
+      if (!rejoin) io.to(roomCode).emit('system-message', `${name} left the room`);
+    }
+    // Agar "left" message pehle hi ja chuka tha to ab "joined" dikhana sahi hai
+    if (leftAnnounced.delete(key)) announce = true;
+    if (announce) io.to(roomCode).emit('system-message', `${name} joined the room`);
 
     try {
       socket.emit('room-info', { permanent: await isPermanent(roomCode) });
@@ -207,6 +240,19 @@ io.on('connection', (socket) => {
     if (roomCode) socket.to(roomCode).emit('stop-typing', { name });
   });
 
+  // Typing indicator (secret chat) - sirf unlocked logon ko dikhta hai
+  socket.on('secret-typing', () => {
+    const { name, roomCode, unlocked } = socket.data;
+    if (!roomCode || !unlocked) return;
+    emitToUnlocked(roomCode, 'secret-typing', { name }, socket);
+  });
+
+  socket.on('secret-stop-typing', () => {
+    const { name, roomCode, unlocked } = socket.data;
+    if (!roomCode || !unlocked) return;
+    emitToUnlocked(roomCode, 'secret-stop-typing', { name }, socket);
+  });
+
   // Normal text message (kabhi save nahi hoti)
   socket.on('chat-message', (data) => {
     const { name, roomCode } = socket.data;
@@ -235,6 +281,13 @@ io.on('connection', (socket) => {
     io.to(roomCode).emit('message-edited', { id, newText: text });
   });
 
+  // Normal chat mein dil lagana / hatana (kabhi save nahi hota)
+  socket.on('heart', ({ id, on } = {}) => {
+    const { name, roomCode } = socket.data;
+    if (!roomCode || typeof id !== 'string' || id.length > 60 || typeof on !== 'boolean') return;
+    io.to(roomCode).emit('heart', { id, name, on });
+  });
+
   // Normal media message (kabhi save nahi hoti)
   socket.on('media-message', ({ url, type, replyTo }) => {
     const { name, roomCode } = socket.data;
@@ -260,12 +313,7 @@ io.on('connection', (socket) => {
 
     const msg = { id: makeId(), name, message, replyTo, kind: 'text', ts: Date.now() };
 
-    // Sirf un sockets ko bhejo jo isi room mein unlocked hain
-    for (const [, s] of io.sockets.sockets) {
-      if (s.data.roomCode === roomCode && s.data.unlocked) {
-        s.emit('secret-message', msg);
-      }
-    }
+    emitToUnlocked(roomCode, 'secret-message', msg);
     saveSecretMessage(roomCode, msg);
   });
 
@@ -288,13 +336,31 @@ io.on('connection', (socket) => {
 
       await ref.update({ message: text, edited: true });
 
-      for (const [, s] of io.sockets.sockets) {
-        if (s.data.roomCode === roomCode && s.data.unlocked) {
-          s.emit('secret-message-edited', { id, newText: text });
-        }
-      }
+      emitToUnlocked(roomCode, 'secret-message-edited', { id, newText: text });
     } catch (err) {
       console.error('Secret message edit failed:', err.message);
+    }
+  });
+
+  // Secret chat mein dil lagana / hatana - database mein save hota hai
+  socket.on('secret-heart', async ({ id, on } = {}) => {
+    const { name, roomCode, unlocked } = socket.data;
+    if (!roomCode || !unlocked || !db) return;
+    if (typeof id !== 'string' || id.length > 60 || typeof on !== 'boolean') return;
+
+    try {
+      const ref = roomRef(roomCode).collection('secretMessages').doc(id);
+      const snap = await ref.get();
+      if (!snap.exists) return;
+
+      const FieldValue = admin.firestore.FieldValue;
+      await ref.update({
+        hearts: on ? FieldValue.arrayUnion(name) : FieldValue.arrayRemove(name)
+      });
+
+      emitToUnlocked(roomCode, 'secret-heart', { id, name, on });
+    } catch (err) {
+      console.error('Secret heart failed:', err.message);
     }
   });
 
@@ -305,20 +371,35 @@ io.on('connection', (socket) => {
 
     const msg = { id: makeId(), name, url, type, replyTo: replyTo || null, kind: 'media', ts: Date.now() };
 
-    for (const [, s] of io.sockets.sockets) {
-      if (s.data.roomCode === roomCode && s.data.unlocked) {
-        s.emit('secret-message', msg);
-      }
-    }
+    emitToUnlocked(roomCode, 'secret-message', msg);
     saveSecretMessage(roomCode, msg);
   });
 
   socket.on('disconnect', () => {
     const { name, roomCode } = socket.data;
-    if (roomCode) {
-      socket.to(roomCode).emit('stop-typing', { name });
-      io.to(roomCode).emit('system-message', `${name} left the room`);
+    if (!roomCode) return;
+
+    socket.to(roomCode).emit('stop-typing', { name });
+    emitToUnlocked(roomCode, 'secret-stop-typing', { name }, socket);
+
+    // Agar isi naam ka koi aur connection isi room mein abhi bhi hai
+    // (jaise dobara judne ke baad purana connection der se band hua), to "left" nahi dikhana
+    let stillHere = false;
+    for (const [, s] of io.sockets.sockets) {
+      if (s.id !== socket.id && s.data.roomCode === roomCode && s.data.name === name) {
+        stillHere = true;
+        break;
+      }
     }
+    if (stillHere) return;
+
+    const key = leaveKey(roomCode, name);
+    if (leaveTimers.has(key)) clearTimeout(leaveTimers.get(key));
+    leaveTimers.set(key, setTimeout(() => {
+      leaveTimers.delete(key);
+      leftAnnounced.add(key);
+      io.to(roomCode).emit('system-message', `${name} left the room`);
+    }, LEAVE_GRACE_MS));
   });
 });
 
