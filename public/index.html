@@ -66,7 +66,17 @@ body.swiping { user-select: none; -webkit-user-select: none; }
   justify-content: space-between;
   gap: 8px;
 }
+#room-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 #header-actions { display: flex; align-items: center; gap: 8px; }
+.hdr-btn {
+  border: none;
+  background: rgba(255,255,255,0.2);
+  color: white;
+  font-size: 14px;
+  padding: 6px 10px;
+  border-radius: 14px;
+  cursor: pointer;
+}
 #perm-btn {
   border: none;
   background: rgba(255,255,255,0.2);
@@ -295,6 +305,118 @@ body.swiping { user-select: none; -webkit-user-select: none; }
   font-size: 16px;
   cursor: pointer;
 }
+.secret-actions { display: flex; align-items: center; gap: 10px; }
+
+/* Secret media (gallery) */
+#media-panel { z-index: 20; }
+#media-grid {
+  flex: 1;
+  overflow-y: auto;
+  padding: 10px;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+  align-content: start;
+  background: #f5f5f5;
+}
+.media-item a { display: block; }
+.media-item img, .media-item video {
+  width: 100%;
+  aspect-ratio: 1;
+  object-fit: cover;
+  border-radius: 8px;
+  display: block;
+  background: #ddd;
+}
+.media-item small { display: block; font-size: 10px; color: #777; margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Call screen */
+#call-screen {
+  z-index: 30;
+  background: #1b1030;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+#remote-video {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  background: #000;
+  opacity: 0;
+  pointer-events: none;
+}
+#remote-video.show { opacity: 1; }
+#local-video {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  width: 96px;
+  height: 128px;
+  object-fit: cover;
+  border-radius: 10px;
+  background: #000;
+  border: 2px solid white;
+  display: none;
+  z-index: 2;
+  transform: scaleX(-1);
+}
+#local-video.show { display: block; }
+#call-info {
+  position: relative;
+  z-index: 2;
+  text-align: center;
+  color: white;
+  text-shadow: 0 1px 4px rgba(0,0,0,0.6);
+}
+#call-name { font-size: 22px; font-weight: bold; }
+#call-status { font-size: 14px; margin-top: 6px; opacity: 0.85; }
+#call-controls {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 24px;
+  display: flex;
+  justify-content: center;
+  gap: 14px;
+  z-index: 2;
+}
+#call-controls button {
+  width: 54px;
+  height: 54px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(255,255,255,0.2);
+  color: white;
+  font-size: 22px;
+  cursor: pointer;
+}
+#call-controls button.active { background: white; color: #1b1030; }
+#call-controls button.end { background: #d32f2f; color: white; }
+
+/* Call / video ka "uthao ya kaato" box */
+#call-prompt { z-index: 40; }
+#prompt-ok { background: #2e7d32; color: white; }
+#prompt-no { background: #d32f2f; color: white; }
+
+#toast {
+  display: none;
+  position: absolute;
+  bottom: 80px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(0,0,0,0.8);
+  color: white;
+  padding: 8px 14px;
+  border-radius: 16px;
+  font-size: 13px;
+  z-index: 60;
+  max-width: 80%;
+  text-align: center;
+}
 </style>
 </head>
 <body>
@@ -308,8 +430,9 @@ body.swiping { user-select: none; -webkit-user-select: none; }
 
 <div id="chat-screen">
   <div id="chat-header">
-    <span>Room: <span id="room-label"></span></span>
+    <span id="room-title">Room: <span id="room-label"></span></span>
     <span id="header-actions">
+      <button id="call-btn" class="hdr-btn" onclick="startCall(false)">&#128222;</button>
       <button id="perm-btn">&#128204; Make permanent</button>
       <button id="heart-btn">&#10084;&#65039;</button>
     </span>
@@ -349,7 +472,11 @@ body.swiping { user-select: none; -webkit-user-select: none; }
     <div class="secret-box">
       <div class="secret-head">
         <span>&#10084;&#65039; Secret chat</span>
-        <button onclick="closeHistory()">&#10006;</button>
+        <span class="secret-actions">
+          <button onclick="openMedia()" title="Media">&#128444;&#65039;</button>
+          <button onclick="startCall(true)" title="Call">&#128222;</button>
+          <button onclick="closeHistory()">&#10006;</button>
+        </span>
       </div>
       <div id="history-list"></div>
       <div id="secret-typing-indicator" class="typing-line"></div>
@@ -365,6 +492,47 @@ body.swiping { user-select: none; -webkit-user-select: none; }
       </div>
     </div>
   </div>
+
+  <!-- Secret media ki list -->
+  <div id="media-panel" class="overlay">
+    <div class="secret-box">
+      <div class="secret-head">
+        <span>&#128444;&#65039; Secret media</span>
+        <button onclick="closeMedia()">&#10006;</button>
+      </div>
+      <div id="media-grid"></div>
+    </div>
+  </div>
+
+  <!-- Call screen -->
+  <div id="call-screen" class="overlay">
+    <video id="remote-video" autoplay playsinline></video>
+    <video id="local-video" autoplay playsinline muted></video>
+    <div id="call-info">
+      <div id="call-name"></div>
+      <div id="call-status"></div>
+    </div>
+    <div id="call-controls">
+      <button id="mute-btn" onclick="toggleMute()" title="Mute">&#127908;</button>
+      <button id="speaker-btn" onclick="toggleSpeaker()" title="Speaker">&#128266;</button>
+      <button id="video-btn" onclick="toggleVideo()" title="Video">&#128249;</button>
+      <button id="end-btn" class="end" onclick="hangUp()" title="Cut">&#128222;</button>
+    </div>
+  </div>
+
+  <!-- Call uthao / kaato (aur video ke liye puchne wala) box -->
+  <div id="call-prompt" class="overlay">
+    <div class="modal-box">
+      <h3 id="prompt-title"></h3>
+      <p id="prompt-sub"></p>
+      <div class="modal-actions">
+        <button id="prompt-no"></button>
+        <button id="prompt-ok"></button>
+      </div>
+    </div>
+  </div>
+
+  <div id="toast"></div>
 </div>
 
 <script src="/socket.io/socket.io.js"></script>
@@ -452,6 +620,8 @@ socket.on('disconnect', (reason) => {
   renderTyping(secretTypingLine, secretTypingUsers);
   isTyping = false;
   secretIsTyping = false;
+  // Call chal rahi thi to network jaate hi khatam
+  if (callState !== 'idle') cleanupCall('Network toot gaya, call khatam');
   // Agar server ne khud kaata hai to browser apne aap try nahi karta, hum karenge
   if (reason === 'io server disconnect') socket.connect();
 });
@@ -1079,7 +1249,7 @@ document.getElementById('secret-media-input').addEventListener('change', async (
   formData.append('file', file);
 
   try {
-    const res = await fetch('/upload', { method: 'POST', body: formData });
+    const res = await fetch('/upload?secret=1', { method: 'POST', body: formData });
     const result = await res.json();
     if (result.url) {
       sendOrQueue(true, 'secret-media-message', { url: result.url, type: result.type, replyTo: secretReplyingTo });
@@ -1095,6 +1265,7 @@ function closeHistory() {
   stopSecretTyping();
   cancelEdit();
   secretMsgInput.value = '';
+  closeMedia();
   historyPanel.style.display = 'none';
   historyList.innerHTML = '';
   cancelSecretReply();
@@ -1105,6 +1276,498 @@ function closeHistory() {
   awaitingSecret = false;
   secretTypingUsers.clear();
   renderTyping(secretTypingLine, secretTypingUsers);
+}
+
+/* ---------- Secret media (gallery) ---------- */
+const mediaPanel = document.getElementById('media-panel');
+const mediaGrid = document.getElementById('media-grid');
+
+function openMedia() {
+  mediaGrid.innerHTML = '';
+  const loading = document.createElement('div');
+  loading.className = 'hist-empty';
+  loading.style.gridColumn = '1 / -1';
+  loading.innerText = 'Loading...';
+  mediaGrid.appendChild(loading);
+  mediaPanel.style.display = 'flex';
+  socket.emit('get-media');
+}
+
+function closeMedia() {
+  mediaPanel.style.display = 'none';
+  mediaGrid.innerHTML = '';
+}
+
+socket.on('media-list', (items) => {
+  if (mediaPanel.style.display !== 'flex') return;
+  mediaGrid.innerHTML = '';
+  if (!items || !items.length) {
+    const empty = document.createElement('div');
+    empty.className = 'hist-empty';
+    empty.style.gridColumn = '1 / -1';
+    empty.innerText = 'Abhi koi media nahi hai';
+    mediaGrid.appendChild(empty);
+    return;
+  }
+  items.forEach((m) => {
+    if (!m.url) return;
+    const cell = document.createElement('div');
+    cell.className = 'media-item';
+    const link = document.createElement('a');
+    link.href = m.url;
+    link.target = '_blank';
+    link.rel = 'noopener noreferrer';
+    let thumb;
+    if (m.type && m.type.startsWith('video/')) {
+      thumb = document.createElement('video');
+      thumb.src = m.url;
+      thumb.preload = 'metadata';
+      thumb.muted = true;
+    } else {
+      thumb = document.createElement('img');
+      thumb.src = m.url;
+      thumb.loading = 'lazy';
+    }
+    link.appendChild(thumb);
+    const cap = document.createElement('small');
+    cap.innerText = (m.name || '') + ' \u2022 ' + (m.ts ? new Date(m.ts).toLocaleDateString() : '');
+    cell.appendChild(link);
+    cell.appendChild(cap);
+    mediaGrid.appendChild(cell);
+  });
+});
+
+/* ---------- Call (audio + video) ---------- */
+const callScreen = document.getElementById('call-screen');
+const remoteVideo = document.getElementById('remote-video');
+const localVideoEl = document.getElementById('local-video');
+const callPrompt = document.getElementById('call-prompt');
+const toastEl = document.getElementById('toast');
+
+let iceServers = [{ urls: 'stun:stun.l.google.com:19302' }];
+fetch('/ice-config')
+  .then((r) => r.json())
+  .then((c) => { if (c && c.iceServers) iceServers = c.iceServers; })
+  .catch(() => {});
+
+let callState = 'idle'; // idle | calling | incall
+let callPeerId = null;
+let peerName = '';
+let callIsSecret = false;
+let incomingCall = null;
+let pc = null;
+let localStream = null;
+let localVideoTrack = null;
+let videoSender = null;
+let localVideoOn = false;
+let remoteVideoOn = false;
+let videoRequestPending = false;
+let micOn = true;
+let pendingCandidates = [];
+let callTimeout = null;
+let callTimer = null;
+let ringTimer = null;
+let audioCtx = null;
+let toastTimer = null;
+
+function toast(text) {
+  toastEl.innerText = text;
+  toastEl.style.display = 'block';
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { toastEl.style.display = 'none'; }, 3000);
+}
+
+function setStatus(text) {
+  document.getElementById('call-status').innerText = text || '';
+}
+
+function showPrompt(title, sub, okText, noText, onOk, onNo) {
+  document.getElementById('prompt-title').innerText = title;
+  document.getElementById('prompt-sub').innerText = sub || '';
+  const ok = document.getElementById('prompt-ok');
+  const no = document.getElementById('prompt-no');
+  ok.innerText = okText;
+  no.innerText = noText;
+  ok.onclick = onOk;
+  no.onclick = onNo;
+  callPrompt.style.display = 'flex';
+}
+
+function hidePrompt() {
+  callPrompt.style.display = 'none';
+}
+
+/* Ringtone (chhota sa beep) */
+function beep() {
+  try {
+    audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+    const o = audioCtx.createOscillator();
+    const g = audioCtx.createGain();
+    o.frequency.value = 440;
+    g.gain.value = 0.05;
+    o.connect(g);
+    g.connect(audioCtx.destination);
+    o.start();
+    o.stop(audioCtx.currentTime + 0.4);
+  } catch (e) {}
+}
+
+function startRing() {
+  stopRing();
+  beep();
+  ringTimer = setInterval(() => {
+    beep();
+    if (navigator.vibrate) navigator.vibrate(300);
+  }, 1500);
+}
+
+function stopRing() {
+  if (ringTimer) { clearInterval(ringTimer); ringTimer = null; }
+}
+
+function updateCallUI() {
+  remoteVideo.classList.toggle('show', remoteVideoOn);
+  localVideoEl.classList.toggle('show', localVideoOn);
+  const muteBtn = document.getElementById('mute-btn');
+  const speakerBtn = document.getElementById('speaker-btn');
+  const videoBtn = document.getElementById('video-btn');
+  muteBtn.innerText = micOn ? '\uD83C\uDFA4' : '\uD83D\uDD07';
+  muteBtn.classList.toggle('active', !micOn);
+  speakerBtn.innerText = remoteVideo.muted ? '\uD83D\uDD08' : '\uD83D\uDD0A';
+  speakerBtn.classList.toggle('active', remoteVideo.muted);
+  videoBtn.classList.toggle('active', localVideoOn);
+}
+
+function openCallScreen(status) {
+  document.getElementById('call-name').innerText = (callIsSecret ? '\uD83D\uDD12 ' : '') + (peerName || '');
+  setStatus(status);
+  callScreen.style.display = 'flex';
+  updateCallUI();
+}
+
+async function getMic() {
+  try {
+    localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    return true;
+  } catch (err) {
+    toast('Mic ki permission chahiye');
+    return false;
+  }
+}
+
+function sendSignal(data) {
+  if (callPeerId) socket.emit('call-signal', { to: callPeerId, data });
+}
+
+/* ----- Call shuru karna (secret = true to secret chat wali call) ----- */
+async function startCall(secret) {
+  if (callState !== 'idle') return;
+  if (!joined || !socket.connected) return toast('Network nahi hai');
+  if (!(await getMic())) return;
+
+  callIsSecret = secret === true;
+  callState = 'calling';
+  peerName = '';
+  openCallScreen('Calling...');
+  socket.emit('call-start', { secret: callIsSecret });
+
+  clearTimeout(callTimeout);
+  callTimeout = setTimeout(() => {
+    if (callState === 'calling') {
+      socket.emit('call-cancel');
+      cleanupCall('Kisi ne call nahi uthayi');
+    }
+  }, 45000);
+}
+
+/* ----- Samne wale ki taraf: call aayi ----- */
+socket.on('incoming-call', ({ from, name, secret }) => {
+  // Pehle se call mein hain to apne aap kaat do
+  if (callState !== 'idle' || incomingCall) {
+    socket.emit('call-response', { to: from, accepted: false });
+    return;
+  }
+  incomingCall = { from, name, secret: secret === true };
+  startRing();
+  showPrompt(
+    (secret ? '\uD83D\uDD12 ' : '') + 'Call aa rahi hai',
+    name + ' call kar raha hai',
+    'Uthao',
+    'Kaato',
+    acceptIncoming,
+    declineIncoming
+  );
+});
+
+socket.on('call-cancelled', ({ from }) => {
+  if (incomingCall && incomingCall.from === from) {
+    const n = incomingCall.name;
+    incomingCall = null;
+    stopRing();
+    hidePrompt();
+    toast('Missed call: ' + n);
+  }
+});
+
+async function acceptIncoming() {
+  const c = incomingCall;
+  incomingCall = null;
+  hidePrompt();
+  stopRing();
+  if (!c) return;
+
+  if (!(await getMic())) {
+    socket.emit('call-response', { to: c.from, accepted: false });
+    return;
+  }
+  callIsSecret = c.secret;
+  callPeerId = c.from;
+  peerName = c.name;
+  callState = 'incall';
+  makePeer();
+  openCallScreen('Connecting...');
+  socket.emit('call-response', { to: c.from, accepted: true });
+}
+
+function declineIncoming() {
+  const c = incomingCall;
+  incomingCall = null;
+  hidePrompt();
+  stopRing();
+  if (c) socket.emit('call-response', { to: c.from, accepted: false });
+}
+
+/* ----- Caller ko jawab mila ----- */
+socket.on('call-response', async ({ from, accepted, name }) => {
+  if (callState !== 'calling') {
+    // Humne pehle hi cut kar diya tha
+    if (accepted) socket.emit('call-end');
+    return;
+  }
+  if (!accepted) {
+    cleanupCall('Call kaat di gayi');
+    return;
+  }
+  clearTimeout(callTimeout);
+  callPeerId = from;
+  peerName = name || 'Dost';
+  callState = 'incall';
+  document.getElementById('call-name').innerText = (callIsSecret ? '\uD83D\uDD12 ' : '') + peerName;
+  setStatus('Connecting...');
+
+  try {
+    makePeer();
+    localStream.getAudioTracks().forEach((t) => pc.addTrack(t, localStream));
+    // Video ke liye jagah pehle se bana ke rakhte hain, camera baad mein chalega
+    videoSender = pc.addTransceiver('video', { direction: 'sendrecv' }).sender;
+    const offer = await pc.createOffer();
+    await pc.setLocalDescription(offer);
+    sendSignal({ type: 'offer', sdp: offer.sdp });
+  } catch (err) {
+    console.error(err);
+    socket.emit('call-end');
+    cleanupCall('Call shuru nahi ho payi');
+  }
+});
+
+/* ----- WebRTC connection ----- */
+function makePeer() {
+  pc = new RTCPeerConnection({ iceServers });
+  pendingCandidates = [];
+  const rs = new MediaStream();
+  remoteVideo.srcObject = rs;
+
+  pc.ontrack = (e) => {
+    rs.addTrack(e.track);
+    remoteVideo.play().catch(() => {});
+  };
+  pc.onicecandidate = (e) => {
+    if (e.candidate) sendSignal({ type: 'ice', candidate: e.candidate.toJSON() });
+  };
+  pc.onconnectionstatechange = () => {
+    if (!pc) return;
+    const st = pc.connectionState;
+    if (st === 'connected') startTimer();
+    else if (st === 'failed') {
+      socket.emit('call-end');
+      cleanupCall('Call jud nahi payi, dobara try karo');
+    }
+  };
+}
+
+async function flushCandidates() {
+  while (pc && pendingCandidates.length) {
+    try { await pc.addIceCandidate(pendingCandidates.shift()); } catch (e) {}
+  }
+}
+
+function startTimer() {
+  if (callTimer) return;
+  const start = Date.now();
+  const pad = (n) => (n < 10 ? '0' : '') + n;
+  const tick = () => {
+    const s = Math.floor((Date.now() - start) / 1000);
+    setStatus(pad(Math.floor(s / 60)) + ':' + pad(s % 60));
+  };
+  tick();
+  callTimer = setInterval(tick, 1000);
+}
+
+socket.on('call-signal', async ({ from, data }) => {
+  if (from !== callPeerId || !data) return;
+  try {
+    switch (data.type) {
+      case 'offer': {
+        if (!pc) return;
+        await pc.setRemoteDescription({ type: 'offer', sdp: data.sdp });
+        await flushCandidates();
+        localStream.getAudioTracks().forEach((t) => pc.addTrack(t, localStream));
+        const vt = pc.getTransceivers().find((t) => t.receiver.track && t.receiver.track.kind === 'video');
+        if (vt) { vt.direction = 'sendrecv'; videoSender = vt.sender; }
+        const answer = await pc.createAnswer();
+        await pc.setLocalDescription(answer);
+        sendSignal({ type: 'answer', sdp: answer.sdp });
+        break;
+      }
+      case 'answer':
+        if (!pc) return;
+        await pc.setRemoteDescription({ type: 'answer', sdp: data.sdp });
+        await flushCandidates();
+        break;
+      case 'ice':
+        if (pc && pc.remoteDescription) {
+          try { await pc.addIceCandidate(data.candidate); } catch (e) {}
+        } else {
+          pendingCandidates.push(data.candidate);
+        }
+        break;
+      case 'video-request':
+        showPrompt(
+          '\uD83D\uDCF9 Video call',
+          peerName + ' video par aana chahta hai',
+          'Uthao',
+          'Mana karo',
+          async () => {
+            hidePrompt();
+            sendSignal({ type: 'video-accept' });
+            await enableVideo();
+          },
+          () => {
+            hidePrompt();
+            sendSignal({ type: 'video-decline' });
+          }
+        );
+        break;
+      case 'video-accept':
+        videoRequestPending = false;
+        await enableVideo();
+        break;
+      case 'video-decline':
+        videoRequestPending = false;
+        toast(peerName + ' ne video nahi liya');
+        break;
+      case 'video-state':
+        remoteVideoOn = data.on === true;
+        updateCallUI();
+        break;
+    }
+  } catch (err) {
+    console.error('Call signal error:', err);
+  }
+});
+
+socket.on('call-ended', () => {
+  if (callState !== 'idle') cleanupCall('Call khatam');
+});
+
+/* ----- Call ke buttons ----- */
+function toggleMute() {
+  if (!localStream) return;
+  micOn = !micOn;
+  localStream.getAudioTracks().forEach((t) => { t.enabled = micOn; });
+  updateCallUI();
+}
+
+// Samne wale ki awaaz on/off (phone ka speaker/kaan wala switch browser se nahi hota)
+function toggleSpeaker() {
+  remoteVideo.muted = !remoteVideo.muted;
+  updateCallUI();
+}
+
+function toggleVideo() {
+  if (callState !== 'incall' || !videoSender) return;
+  if (localVideoOn) return disableVideo();
+  if (remoteVideoOn) return enableVideo(); // samne wala pehle se video par hai
+  if (videoRequestPending) return;
+  videoRequestPending = true;
+  toast('Video ke liye puch raha hoon...');
+  sendSignal({ type: 'video-request' });
+  setTimeout(() => {
+    if (videoRequestPending) {
+      videoRequestPending = false;
+      toast('Video ka jawab nahi aaya');
+    }
+  }, 20000);
+}
+
+async function enableVideo() {
+  if (!videoSender || callState !== 'incall') return;
+  try {
+    const s = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' } });
+    localVideoTrack = s.getVideoTracks()[0];
+    await videoSender.replaceTrack(localVideoTrack);
+    localVideoEl.srcObject = new MediaStream([localVideoTrack]);
+    localVideoOn = true;
+    updateCallUI();
+    sendSignal({ type: 'video-state', on: true });
+  } catch (err) {
+    toast('Camera nahi chal paya, permission check karo');
+  }
+}
+
+async function disableVideo() {
+  try {
+    if (localVideoTrack) localVideoTrack.stop();
+    if (videoSender) await videoSender.replaceTrack(null);
+  } catch (e) {}
+  localVideoTrack = null;
+  localVideoEl.srcObject = null;
+  localVideoOn = false;
+  updateCallUI();
+  sendSignal({ type: 'video-state', on: false });
+}
+
+function hangUp() {
+  if (callState === 'calling') socket.emit('call-cancel');
+  else if (callState === 'incall') socket.emit('call-end');
+  cleanupCall('Call khatam');
+}
+
+function cleanupCall(msg) {
+  stopRing();
+  hidePrompt();
+  clearTimeout(callTimeout);
+  if (callTimer) { clearInterval(callTimer); callTimer = null; }
+  if (pc) { try { pc.close(); } catch (e) {} pc = null; }
+  if (localStream) localStream.getTracks().forEach((t) => t.stop());
+  if (localVideoTrack) localVideoTrack.stop();
+  localStream = null;
+  localVideoTrack = null;
+  videoSender = null;
+  localVideoOn = false;
+  remoteVideoOn = false;
+  videoRequestPending = false;
+  micOn = true;
+  pendingCandidates = [];
+  incomingCall = null;
+  callPeerId = null;
+  callState = 'idle';
+  remoteVideo.srcObject = null;
+  remoteVideo.muted = false;
+  localVideoEl.srcObject = null;
+  callScreen.style.display = 'none';
+  updateCallUI();
+  if (msg) toast(msg);
 }
 
 /* ---------- Helpers ---------- */
