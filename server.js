@@ -6,10 +6,15 @@ const multer = require('multer');
 const fs = require('fs');
 const crypto = require('crypto');
 const admin = require('firebase-admin');
+const { S3Client, PutObjectCommand, GetObjectCommand } = require('@aws-sdk/client-s3');
+const { getSignedUrl } = require('@aws-sdk/s3-request-presigner');
 
 const app = express();
 const server = http.createServer(app);
 const io = socketIo(server);
+
+// Secret chat mein kitne din ke messages dikhane hain
+const HISTORY_DAYS = 5;
 
 // ---------- Firebase setup ----------
 let db = null;
@@ -36,6 +41,37 @@ if (
   console.log('Firebase env variables missing - permanent rooms disabled');
 }
 
+// ---------- Backblaze B2 setup (permanent media) ----------
+let s3 = null;
+const B2_BUCKET = process.env.B2_BUCKET;
+if (
+  process.env.B2_KEY_ID &&
+  process.env.B2_APPLICATION_KEY &&
+  process.env.B2_ENDPOINT &&
+  B2_BUCKET
+) {
+  try {
+    const endpoint = process.env.B2_ENDPOINT.replace(/^https?:\/\//, '').replace(/\/+$/, '');
+    const region = endpoint.split('.')[1];
+    s3 = new S3Client({
+      endpoint: 'https://' + endpoint,
+      region,
+      credentials: {
+        accessKeyId: process.env.B2_KEY_ID,
+        secretAccessKey: process.env.B2_APPLICATION_KEY
+      },
+      forcePathStyle: true,
+      requestChecksumCalculation: 'WHEN_REQUIRED',
+      responseChecksumValidation: 'WHEN_REQUIRED'
+    });
+    console.log('Backblaze B2 connected');
+  } catch (err) {
+    console.error('B2 setup failed:', err.message);
+  }
+} else {
+  console.log('B2 env variables missing - media will be saved on server (temporary)');
+}
+
 // ---------- Upload setup ----------
 const uploadDir = path.join(__dirname, 'public', 'uploads');
 if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
@@ -44,12 +80,77 @@ const upload = multer({ dest: uploadDir, limits: { fileSize: 100 * 1024 * 1024 }
 
 app.use(express.static(path.join(__dirname, 'public')));
 
-app.post('/upload', upload.single('file'), (req, res) => {
+app.post('/upload', upload.single('file'), async (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'No file' });
-  res.json({
-    url: '/uploads/' + req.file.filename,
-    type: req.file.mimetype
-  });
+
+  // B2 set nahi hai to purana tareeka (server par temporary)
+  if (!s3) {
+    return res.json({
+      url: '/uploads/' + req.file.filename,
+      type: req.file.mimetype
+    });
+  }
+
+  try {
+    const ext = path
+      .extname(req.file.originalname || '')
+      .toLowerCase()
+      .replace(/[^a-z0-9.]/g, '')
+      .slice(0, 10);
+    const key = (req.query.secret === '1' ? 'secret-' : 'normal-') + makeId() + ext;
+
+    await s3.send(
+      new PutObjectCommand({
+        Bucket: B2_BUCKET,
+        Key: key,
+        Body: fs.createReadStream(req.file.path),
+        ContentLength: req.file.size,
+        ContentType: req.file.mimetype
+      })
+    );
+
+    res.json({ url: '/media/' + key, type: req.file.mimetype });
+  } catch (err) {
+    console.error('B2 upload failed:', err.message);
+    res.status(500).json({ error: 'Upload failed' });
+  } finally {
+    fs.unlink(req.file.path, () => {});
+  }
+});
+
+// B2 ki private file dikhane ke liye: ek ghante ka temporary link bana ke wahan bhej do
+app.get('/media/:key', async (req, res) => {
+  if (!s3) return res.status(404).end();
+  const key = req.params.key;
+  if (!/^[a-zA-Z0-9._-]+$/.test(key)) return res.status(400).end();
+  try {
+    const url = await getSignedUrl(
+      s3,
+      new GetObjectCommand({ Bucket: B2_BUCKET, Key: key }),
+      { expiresIn: 3600 }
+    );
+    res.set('Cache-Control', 'private, max-age=3000');
+    res.redirect(url);
+  } catch (err) {
+    console.error('Media link failed:', err.message);
+    res.status(500).end();
+  }
+});
+
+// Call ke liye STUN (aur chaho to TURN) servers
+app.get('/ice-config', (req, res) => {
+  const iceServers = [
+    { urls: 'stun:stun.l.google.com:19302' },
+    { urls: 'stun:stun1.l.google.com:19302' }
+  ];
+  if (process.env.TURN_URL && process.env.TURN_USERNAME && process.env.TURN_CREDENTIAL) {
+    iceServers.push({
+      urls: process.env.TURN_URL.split(','),
+      username: process.env.TURN_USERNAME,
+      credential: process.env.TURN_CREDENTIAL
+    });
+  }
+  res.json({ iceServers });
 });
 
 // ---------- Helpers ----------
@@ -92,6 +193,22 @@ async function saveSecretMessage(roomCode, msg) {
   }
 }
 
+// Secret chat ki saari media ki alag list (media button ke liye)
+async function saveSecretMedia(roomCode, msg) {
+  if (!db) return;
+  try {
+    await roomRef(roomCode).collection('secretMedia').doc(msg.id).set({
+      id: msg.id,
+      name: msg.name,
+      url: msg.url,
+      type: msg.type,
+      ts: msg.ts
+    });
+  } catch (err) {
+    console.error('Secret media save failed:', err.message);
+  }
+}
+
 // Sirf un sockets ko bhejo jo isi room mein secret chat unlock kar chuke hain
 function emitToUnlocked(roomCode, event, payload, exceptSocket) {
   for (const [, s] of io.sockets.sockets) {
@@ -126,11 +243,47 @@ function leaveKey(roomCode, name) {
   return roomCode + '|' + name;
 }
 
+// ---------- Call helpers ----------
+// Call ke signal sirf isi room ke bande ko jayein (secret call mein dono unlocked hone chahiye)
+function callTarget(socket, targetId) {
+  if (typeof targetId !== 'string') return null;
+  const target = io.sockets.sockets.get(targetId);
+  if (!target || !socket.data.roomCode || target.data.roomCode !== socket.data.roomCode) return null;
+  const secret = socket.data.callSecret || target.data.callSecret;
+  if (secret && !(socket.data.unlocked && target.data.unlocked)) return null;
+  return target;
+}
+
+function endCall(socket) {
+  const peerId = socket.data.callPeer;
+  socket.data.callPeer = null;
+  socket.data.callSecret = false;
+  if (!peerId) return;
+  const peer = io.sockets.sockets.get(peerId);
+  if (peer) {
+    peer.data.callPeer = null;
+    peer.data.callSecret = false;
+    peer.emit('call-ended', { from: socket.id });
+  }
+}
+
+// Room ke baaki logon ko (secret call ho to sirf unlocked ko) event bhejo
+function emitToOthersForCall(socket, isSecret, event, payload) {
+  const { roomCode } = socket.data;
+  for (const [, s] of io.sockets.sockets) {
+    if (s.id === socket.id || s.data.roomCode !== roomCode) continue;
+    if (isSecret && !s.data.unlocked) continue;
+    s.emit(event, payload);
+  }
+}
+
 // ---------- Sockets ----------
 io.on('connection', (socket) => {
   socket.data.failedAttempts = 0;
   socket.data.lockUntil = 0;
   socket.data.unlocked = false; // secret chat ka access mila hai ya nahi
+  socket.data.callPeer = null;
+  socket.data.callSecret = false;
 
   socket.on('join-room', async ({ name, roomCode, rejoin }) => {
     socket.join(roomCode);
@@ -216,16 +369,36 @@ io.on('connection', (socket) => {
       socket.data.failedAttempts = 0;
       socket.data.unlocked = true;
 
+      // Sirf pichhle HISTORY_DAYS din ke messages
+      const since = Date.now() - HISTORY_DAYS * 24 * 60 * 60 * 1000;
       const msgs = await roomRef(roomCode)
         .collection('secretMessages')
+        .where('ts', '>=', since)
         .orderBy('ts', 'desc')
-        .limit(200)
+        .limit(1000)
         .get();
       const history = msgs.docs.map((d) => d.data()).reverse();
       socket.emit('history', history);
     } catch (err) {
       console.error('History load failed:', err.message);
       socket.emit('history-error', 'History load nahi ho payi');
+    }
+  });
+
+  // Secret chat ki saari media ki list (media button ke liye)
+  socket.on('get-media', async () => {
+    const { roomCode, unlocked } = socket.data;
+    if (!roomCode || !unlocked || !db) return;
+    try {
+      const snap = await roomRef(roomCode)
+        .collection('secretMedia')
+        .orderBy('ts', 'desc')
+        .limit(300)
+        .get();
+      socket.emit('media-list', snap.docs.map((d) => d.data()));
+    } catch (err) {
+      console.error('Media list failed:', err.message);
+      socket.emit('media-list', []);
     }
   });
 
@@ -373,9 +546,66 @@ io.on('connection', (socket) => {
 
     emitToUnlocked(roomCode, 'secret-message', msg);
     saveSecretMessage(roomCode, msg);
+    saveSecretMedia(roomCode, msg);
   });
 
+  // ---------- Call (audio / video) ----------
+  // Call shuru karna: room ke baaki logon ko "incoming call" dikhega
+  socket.on('call-start', ({ secret } = {}) => {
+    const { name, roomCode, unlocked } = socket.data;
+    if (!roomCode || socket.data.callPeer) return;
+    const isSecret = secret === true;
+    if (isSecret && !unlocked) return;
+
+    socket.data.callSecret = isSecret;
+    emitToOthersForCall(socket, isSecret, 'incoming-call', {
+      from: socket.id,
+      name,
+      secret: isSecret
+    });
+  });
+
+  // Uthane se pehle caller ne khud kaat diya
+  socket.on('call-cancel', () => {
+    if (!socket.data.roomCode || socket.data.callPeer) return;
+    emitToOthersForCall(socket, socket.data.callSecret, 'call-cancelled', { from: socket.id });
+    socket.data.callSecret = false;
+  });
+
+  // Samne wale ne uthaya ya kaata
+  socket.on('call-response', ({ to, accepted } = {}) => {
+    const caller = callTarget(socket, to);
+    if (!caller) return;
+
+    if (accepted !== true) {
+      caller.emit('call-response', { from: socket.id, accepted: false });
+      return;
+    }
+
+    if (caller.data.callPeer || socket.data.callPeer) {
+      socket.emit('call-ended', { from: to, busy: true });
+      return;
+    }
+
+    caller.data.callPeer = socket.id;
+    socket.data.callPeer = caller.id;
+    socket.data.callSecret = caller.data.callSecret;
+    caller.emit('call-response', { from: socket.id, name: socket.data.name, accepted: true });
+  });
+
+  // WebRTC ke signals (offer, answer, ice, video request/accept/decline) seedha dusre banda tak
+  socket.on('call-signal', ({ to, data } = {}) => {
+    if (socket.data.callPeer !== to) return;
+    const target = callTarget(socket, to);
+    if (!target) return;
+    target.emit('call-signal', { from: socket.id, data });
+  });
+
+  socket.on('call-end', () => endCall(socket));
+
   socket.on('disconnect', () => {
+    endCall(socket);
+
     const { name, roomCode } = socket.data;
     if (!roomCode) return;
 
