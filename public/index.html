@@ -15,6 +15,9 @@ body {
 }
 body.swiping { user-select: none; -webkit-user-select: none; }
 
+/* Icons (SVG) */
+.ic { width: 20px; height: 20px; fill: currentColor; display: block; }
+
 #join-screen {
   background: white;
   padding: 40px;
@@ -76,6 +79,9 @@ body.swiping { user-select: none; -webkit-user-select: none; }
   padding: 6px 10px;
   border-radius: 14px;
   cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 #perm-btn {
   border: none;
@@ -304,8 +310,19 @@ body.swiping { user-select: none; -webkit-user-select: none; }
   color: white;
   font-size: 16px;
   cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
-.secret-actions { display: flex; align-items: center; gap: 10px; }
+.secret-head button .ic { width: 22px; height: 22px; }
+.secret-head button.app-ic {
+  width: 30px;
+  height: 30px;
+  background: #fff;
+  border-radius: 8px;
+}
+.secret-head button.app-ic .ic { width: 24px; height: 24px; }
+.secret-actions { display: flex; align-items: center; gap: 12px; }
 
 /* Secret media (gallery) */
 #media-panel { z-index: 20; }
@@ -330,77 +347,127 @@ body.swiping { user-select: none; -webkit-user-select: none; }
 }
 .media-item small { display: block; font-size: 10px; color: #777; margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-/* Call screen */
+/* Call screen (iPhone jaisa) */
 #call-screen {
   z-index: 30;
-  background: #1b1030;
+  background: linear-gradient(180deg, #3a3a4c 0%, #101018 100%);
   flex-direction: column;
   align-items: center;
   justify-content: center;
   overflow: hidden;
 }
-#remote-video {
+.cv {
   position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
   object-fit: cover;
   background: #000;
   opacity: 0;
   pointer-events: none;
+  transition: opacity 0.2s;
 }
-#remote-video.show { opacity: 1; }
-#local-video {
-  position: absolute;
-  top: 12px;
-  right: 12px;
+.cv.show { opacity: 1; pointer-events: auto; }
+.cv-big { top: 0; left: 0; width: 100%; height: 100%; z-index: 1; border-radius: 0; border: 0; }
+.cv-small {
+  top: 14px;
+  right: 14px;
+  left: auto;
   width: 96px;
   height: 128px;
-  object-fit: cover;
-  border-radius: 10px;
-  background: #000;
-  border: 2px solid white;
-  display: none;
-  z-index: 2;
-  transform: scaleX(-1);
+  z-index: 3;
+  border-radius: 12px;
+  border: 2px solid #fff;
+  cursor: pointer;
 }
-#local-video.show { display: block; }
+#local-video { transform: scaleX(-1); }
 #call-info {
-  position: relative;
+  position: absolute;
+  top: 56px;
+  left: 0;
+  right: 0;
   z-index: 2;
   text-align: center;
   color: white;
   text-shadow: 0 1px 4px rgba(0,0,0,0.6);
+  pointer-events: none;
 }
-#call-name { font-size: 22px; font-weight: bold; }
-#call-status { font-size: 14px; margin-top: 6px; opacity: 0.85; }
+#call-name { font-size: 28px; font-weight: 600; }
+#call-status { font-size: 15px; margin-top: 6px; opacity: 0.8; }
+#call-avatar {
+  width: 110px;
+  height: 110px;
+  border-radius: 50%;
+  background: rgba(255,255,255,0.18);
+  color: white;
+  font-size: 48px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1;
+}
 #call-controls {
   position: absolute;
   left: 0;
   right: 0;
-  bottom: 24px;
+  bottom: 36px;
   display: flex;
   justify-content: center;
-  gap: 14px;
-  z-index: 2;
+  gap: 18px;
+  z-index: 4;
 }
 #call-controls button {
-  width: 54px;
-  height: 54px;
+  width: 62px;
+  height: 62px;
   border-radius: 50%;
   border: none;
-  background: rgba(255,255,255,0.2);
+  background: rgba(255,255,255,0.22);
   color: white;
-  font-size: 22px;
   cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
-#call-controls button.active { background: white; color: #1b1030; }
-#call-controls button.end { background: #d32f2f; color: white; }
+#call-controls button .ic { width: 28px; height: 28px; }
+#call-controls button.active { background: #fff; color: #1b1b24; }
+#call-controls button.end { background: #ff3b30; color: #fff; }
 
-/* Call / video ka "uthao ya kaato" box */
-#call-prompt { z-index: 40; }
-#prompt-ok { background: #2e7d32; color: white; }
-#prompt-no { background: #d32f2f; color: white; }
+/* Call aane par poori screen (hara aur laal gol button) */
+#incoming-screen {
+  z-index: 40;
+  flex-direction: column;
+  justify-content: space-between;
+  align-items: center;
+  background: linear-gradient(180deg, #3a3a4c 0%, #101018 100%);
+  color: #fff;
+  padding: 70px 0 60px;
+}
+#inc-title { font-size: 15px; opacity: 0.75; text-align: center; }
+#inc-name { font-size: 32px; font-weight: 600; margin-top: 6px; text-align: center; padding: 0 16px; }
+#inc-avatar {
+  width: 120px;
+  height: 120px;
+  border-radius: 50%;
+  background: rgba(255,255,255,0.18);
+  font-size: 52px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+#inc-buttons { display: flex; justify-content: space-around; width: 100%; padding: 0 36px; }
+.round {
+  width: 68px;
+  height: 68px;
+  border-radius: 50%;
+  border: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: #fff;
+}
+.round .ic { width: 32px; height: 32px; }
+.round.red { background: #ff3b30; }
+.round.green { background: #34c759; }
 
 #toast {
   display: none;
@@ -421,6 +488,30 @@ body.swiping { user-select: none; -webkit-user-select: none; }
 </head>
 <body>
 
+<!-- Saare icons ek jagah (SVG) -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <symbol id="i-phone" viewBox="0 0 24 24"><path d="M6.62 10.79c1.44 2.83 3.76 5.14 6.59 6.59l2.2-2.2c.27-.27.67-.36 1.02-.24 1.12.37 2.33.57 3.57.57.55 0 1 .45 1 1V20c0 .55-.45 1-1 1-9.39 0-17-7.61-17-17 0-.55.45-1 1-1h3.5c.55 0 1 .45 1 1 0 1.25.2 2.45.57 3.57.11.35.03.74-.25 1.02l-2.2 2.2z"/></symbol>
+    <symbol id="i-end" viewBox="0 0 24 24"><path d="M12 9c-1.6 0-3.15.25-4.6.72v3.1c0 .39-.23.74-.56.9-.98.49-1.87 1.12-2.66 1.85-.18.18-.43.28-.7.28-.28 0-.53-.11-.71-.29L.29 13.08c-.18-.17-.29-.42-.29-.7 0-.28.11-.53.29-.71C3.34 8.78 7.46 7 12 7s8.66 1.78 11.71 4.67c.18.18.29.43.29.71 0 .28-.11.53-.29.71l-2.48 2.48c-.18.18-.43.29-.71.29-.27 0-.52-.11-.7-.28-.79-.74-1.69-1.36-2.67-1.85-.33-.16-.56-.5-.56-.9v-3.1C15.15 9.25 13.6 9 12 9z"/></symbol>
+    <symbol id="i-mic" viewBox="0 0 24 24"><path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm5.3-3c0 3-2.54 5.1-5.3 5.1S6.7 14 6.7 11H5c0 3.41 2.72 6.23 6 6.72V21h2v-3.28c3.28-.48 6-3.3 6-6.72h-1.7z"/></symbol>
+    <symbol id="i-mic-off" viewBox="0 0 24 24"><use href="#i-mic"/><path d="M4 4L20 20" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" fill="none"/></symbol>
+    <symbol id="i-speaker" viewBox="0 0 24 24"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/></symbol>
+    <symbol id="i-speaker-off" viewBox="0 0 24 24"><use href="#i-speaker"/><path d="M4 4L20 20" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" fill="none"/></symbol>
+    <symbol id="i-video" viewBox="0 0 24 24"><path d="M17 10.5V7c0-.55-.45-1-1-1H4c-.55 0-1 .45-1 1v10c0 .55.45 1 1 1h12c.55 0 1-.45 1-1v-3.5l4 4v-11l-4 4z"/></symbol>
+    <!-- Photos (gallery) ka rangeen phool -->
+    <symbol id="i-photos" viewBox="0 0 24 24">
+      <ellipse cx="12" cy="6.6" rx="3" ry="4.6" fill="#f5584f" opacity=".85"/>
+      <ellipse cx="12" cy="6.6" rx="3" ry="4.6" fill="#ff9a2e" opacity=".85" transform="rotate(45 12 12)"/>
+      <ellipse cx="12" cy="6.6" rx="3" ry="4.6" fill="#ffd426" opacity=".85" transform="rotate(90 12 12)"/>
+      <ellipse cx="12" cy="6.6" rx="3" ry="4.6" fill="#7ed957" opacity=".85" transform="rotate(135 12 12)"/>
+      <ellipse cx="12" cy="6.6" rx="3" ry="4.6" fill="#2ec4a6" opacity=".85" transform="rotate(180 12 12)"/>
+      <ellipse cx="12" cy="6.6" rx="3" ry="4.6" fill="#3b9cff" opacity=".85" transform="rotate(225 12 12)"/>
+      <ellipse cx="12" cy="6.6" rx="3" ry="4.6" fill="#8e6bff" opacity=".85" transform="rotate(270 12 12)"/>
+      <ellipse cx="12" cy="6.6" rx="3" ry="4.6" fill="#ff5fa8" opacity=".85" transform="rotate(315 12 12)"/>
+    </symbol>
+  </defs>
+</svg>
+
 <div id="join-screen">
   <h1>Join Chat</h1>
   <input type="text" id="name-input" placeholder="Your Name">
@@ -432,7 +523,7 @@ body.swiping { user-select: none; -webkit-user-select: none; }
   <div id="chat-header">
     <span id="room-title">Room: <span id="room-label"></span></span>
     <span id="header-actions">
-      <button id="call-btn" class="hdr-btn" onclick="startCall(false)">&#128222;</button>
+      <button id="call-btn" class="hdr-btn" onclick="startCall(false)" title="Call"><svg class="ic"><use href="#i-phone"/></svg></button>
       <button id="perm-btn">&#128204; Make permanent</button>
       <button id="heart-btn">&#10084;&#65039;</button>
     </span>
@@ -473,8 +564,8 @@ body.swiping { user-select: none; -webkit-user-select: none; }
       <div class="secret-head">
         <span>&#10084;&#65039; Secret chat</span>
         <span class="secret-actions">
-          <button onclick="openMedia()" title="Media">&#128444;&#65039;</button>
-          <button onclick="startCall(true)" title="Call">&#128222;</button>
+          <button class="app-ic" onclick="openMedia()" title="Media"><svg class="ic"><use href="#i-photos"/></svg></button>
+          <button onclick="startCall(true)" title="Call"><svg class="ic"><use href="#i-phone"/></svg></button>
           <button onclick="closeHistory()">&#10006;</button>
         </span>
       </div>
@@ -497,7 +588,7 @@ body.swiping { user-select: none; -webkit-user-select: none; }
   <div id="media-panel" class="overlay">
     <div class="secret-box">
       <div class="secret-head">
-        <span>&#128444;&#65039; Secret media</span>
+        <span>Secret media</span>
         <button onclick="closeMedia()">&#10006;</button>
       </div>
       <div id="media-grid"></div>
@@ -506,29 +597,31 @@ body.swiping { user-select: none; -webkit-user-select: none; }
 
   <!-- Call screen -->
   <div id="call-screen" class="overlay">
-    <video id="remote-video" autoplay playsinline></video>
-    <video id="local-video" autoplay playsinline muted></video>
+    <video id="remote-video" class="cv cv-big" autoplay playsinline></video>
+    <video id="local-video" class="cv cv-small" autoplay playsinline muted></video>
     <div id="call-info">
       <div id="call-name"></div>
       <div id="call-status"></div>
     </div>
+    <div id="call-avatar"></div>
     <div id="call-controls">
-      <button id="mute-btn" onclick="toggleMute()" title="Mute">&#127908;</button>
-      <button id="speaker-btn" onclick="toggleSpeaker()" title="Speaker">&#128266;</button>
-      <button id="video-btn" onclick="toggleVideo()" title="Video">&#128249;</button>
-      <button id="end-btn" class="end" onclick="hangUp()" title="Cut">&#128222;</button>
+      <button id="mute-btn" onclick="toggleMute()" title="Mute"><svg class="ic"><use href="#i-mic"/></svg></button>
+      <button id="speaker-btn" onclick="toggleSpeaker()" title="Speaker"><svg class="ic"><use href="#i-speaker"/></svg></button>
+      <button id="video-btn" onclick="toggleVideo()" title="Video"><svg class="ic"><use href="#i-video"/></svg></button>
+      <button id="end-btn" class="end" onclick="hangUp()" title="Cut"><svg class="ic"><use href="#i-end"/></svg></button>
     </div>
   </div>
 
-  <!-- Call uthao / kaato (aur video ke liye puchne wala) box -->
-  <div id="call-prompt" class="overlay">
-    <div class="modal-box">
-      <h3 id="prompt-title"></h3>
-      <p id="prompt-sub"></p>
-      <div class="modal-actions">
-        <button id="prompt-no"></button>
-        <button id="prompt-ok"></button>
-      </div>
+  <!-- Call / video aane par poori screen -->
+  <div id="incoming-screen" class="overlay">
+    <div>
+      <div id="inc-title"></div>
+      <div id="inc-name"></div>
+    </div>
+    <div id="inc-avatar"></div>
+    <div id="inc-buttons">
+      <button id="inc-no" class="round red"><svg class="ic"><use href="#i-end"/></svg></button>
+      <button id="inc-ok" class="round green"><svg class="ic"><use id="inc-ok-icon" href="#i-phone"/></svg></button>
     </div>
   </div>
 
@@ -1341,7 +1434,7 @@ socket.on('media-list', (items) => {
 const callScreen = document.getElementById('call-screen');
 const remoteVideo = document.getElementById('remote-video');
 const localVideoEl = document.getElementById('local-video');
-const callPrompt = document.getElementById('call-prompt');
+const incomingScreen = document.getElementById('incoming-screen');
 const toastEl = document.getElementById('toast');
 
 let iceServers = [{ urls: 'stun:stun.l.google.com:19302' }];
@@ -1359,14 +1452,18 @@ let pc = null;
 let localStream = null;
 let localVideoTrack = null;
 let videoSender = null;
-let localVideoOn = false;
-let remoteVideoOn = false;
+let localVideoOn = false;       // meri camera chal rahi hai (preview dikh raha hai)
+let videoSending = false;       // meri video samne wale ko ja rahi hai
+let remoteVideoOn = false;      // samne wale ki video aa rahi hai
 let videoRequestPending = false;
+let videoRequestTimer = null;
+let swapped = false;            // chhoti/badi window badli hui hai ya nahi
 let micOn = true;
 let pendingCandidates = [];
 let callTimeout = null;
 let callTimer = null;
 let ringTimer = null;
+let qualityTimer = null;
 let audioCtx = null;
 let toastTimer = null;
 
@@ -1381,20 +1478,24 @@ function setStatus(text) {
   document.getElementById('call-status').innerText = text || '';
 }
 
-function showPrompt(title, sub, okText, noText, onOk, onNo) {
-  document.getElementById('prompt-title').innerText = title;
-  document.getElementById('prompt-sub').innerText = sub || '';
-  const ok = document.getElementById('prompt-ok');
-  const no = document.getElementById('prompt-no');
-  ok.innerText = okText;
-  no.innerText = noText;
-  ok.onclick = onOk;
-  no.onclick = onNo;
-  callPrompt.style.display = 'flex';
+function setIcon(btnId, iconId) {
+  const u = document.querySelector('#' + btnId + ' use');
+  if (u) u.setAttribute('href', '#' + iconId);
 }
 
-function hidePrompt() {
-  callPrompt.style.display = 'none';
+/* Call / video aane par poori screen: laal (kaato) aur hara (uthao) gol button */
+function showIncoming(title, name, isVideo, onOk, onNo) {
+  document.getElementById('inc-title').innerText = title;
+  document.getElementById('inc-name').innerText = name || '';
+  document.getElementById('inc-avatar').innerText = (name || '').charAt(0).toUpperCase();
+  document.getElementById('inc-ok-icon').setAttribute('href', isVideo ? '#i-video' : '#i-phone');
+  document.getElementById('inc-ok').onclick = onOk;
+  document.getElementById('inc-no').onclick = onNo;
+  incomingScreen.style.display = 'flex';
+}
+
+function hideIncoming() {
+  incomingScreen.style.display = 'none';
 }
 
 /* Ringtone (chhota sa beep) */
@@ -1425,21 +1526,46 @@ function stopRing() {
   if (ringTimer) { clearInterval(ringTimer); ringTimer = null; }
 }
 
+/* Dono video: jab dono chalu ho to ek badi ek chhoti (tap karke badal sakte ho) */
+function setVideoBox(el, on, big) {
+  el.classList.toggle('cv-big', big);
+  el.classList.toggle('cv-small', !big);
+  el.classList.toggle('show', on);
+}
+
+function layoutVideos() {
+  const both = localVideoOn && remoteVideoOn;
+  const bigIsLocal = both ? swapped : localVideoOn;
+  setVideoBox(remoteVideo, remoteVideoOn, !bigIsLocal);
+  setVideoBox(localVideoEl, localVideoOn, bigIsLocal);
+  document.getElementById('call-avatar').style.display = (localVideoOn || remoteVideoOn) ? 'none' : 'flex';
+}
+
+[remoteVideo, localVideoEl].forEach((el) => {
+  el.addEventListener('click', () => {
+    if (localVideoOn && remoteVideoOn && el.classList.contains('cv-small')) {
+      swapped = !swapped;
+      layoutVideos();
+    }
+  });
+});
+
 function updateCallUI() {
-  remoteVideo.classList.toggle('show', remoteVideoOn);
-  localVideoEl.classList.toggle('show', localVideoOn);
-  const muteBtn = document.getElementById('mute-btn');
-  const speakerBtn = document.getElementById('speaker-btn');
-  const videoBtn = document.getElementById('video-btn');
-  muteBtn.innerText = micOn ? '\uD83C\uDFA4' : '\uD83D\uDD07';
-  muteBtn.classList.toggle('active', !micOn);
-  speakerBtn.innerText = remoteVideo.muted ? '\uD83D\uDD08' : '\uD83D\uDD0A';
-  speakerBtn.classList.toggle('active', remoteVideo.muted);
-  videoBtn.classList.toggle('active', localVideoOn);
+  layoutVideos();
+  setIcon('mute-btn', micOn ? 'i-mic' : 'i-mic-off');
+  document.getElementById('mute-btn').classList.toggle('active', !micOn);
+  setIcon('speaker-btn', remoteVideo.muted ? 'i-speaker-off' : 'i-speaker');
+  document.getElementById('speaker-btn').classList.toggle('active', remoteVideo.muted);
+  document.getElementById('video-btn').classList.toggle('active', localVideoOn);
+}
+
+function setCallName() {
+  document.getElementById('call-name').innerText = (callIsSecret ? '\uD83D\uDD12 ' : '') + (peerName || '');
+  document.getElementById('call-avatar').innerText = (peerName || '').charAt(0).toUpperCase();
 }
 
 function openCallScreen(status) {
-  document.getElementById('call-name').innerText = (callIsSecret ? '\uD83D\uDD12 ' : '') + (peerName || '');
+  setCallName();
   setStatus(status);
   callScreen.style.display = 'flex';
   updateCallUI();
@@ -1489,11 +1615,10 @@ socket.on('incoming-call', ({ from, name, secret }) => {
   }
   incomingCall = { from, name, secret: secret === true };
   startRing();
-  showPrompt(
-    (secret ? '\uD83D\uDD12 ' : '') + 'Call aa rahi hai',
-    name + ' call kar raha hai',
-    'Uthao',
-    'Kaato',
+  showIncoming(
+    secret ? '\uD83D\uDD12 Secret chat call' : 'Incoming call',
+    name,
+    false,
     acceptIncoming,
     declineIncoming
   );
@@ -1504,7 +1629,7 @@ socket.on('call-cancelled', ({ from }) => {
     const n = incomingCall.name;
     incomingCall = null;
     stopRing();
-    hidePrompt();
+    hideIncoming();
     toast('Missed call: ' + n);
   }
 });
@@ -1512,7 +1637,7 @@ socket.on('call-cancelled', ({ from }) => {
 async function acceptIncoming() {
   const c = incomingCall;
   incomingCall = null;
-  hidePrompt();
+  hideIncoming();
   stopRing();
   if (!c) return;
 
@@ -1532,7 +1657,7 @@ async function acceptIncoming() {
 function declineIncoming() {
   const c = incomingCall;
   incomingCall = null;
-  hidePrompt();
+  hideIncoming();
   stopRing();
   if (c) socket.emit('call-response', { to: c.from, accepted: false });
 }
@@ -1552,7 +1677,7 @@ socket.on('call-response', async ({ from, accepted, name }) => {
   callPeerId = from;
   peerName = name || 'Dost';
   callState = 'incall';
-  document.getElementById('call-name').innerText = (callIsSecret ? '\uD83D\uDD12 ' : '') + peerName;
+  setCallName();
   setStatus('Connecting...');
 
   try {
@@ -1642,32 +1767,43 @@ socket.on('call-signal', async ({ from, data }) => {
         }
         break;
       case 'video-request':
-        showPrompt(
-          '\uD83D\uDCF9 Video call',
-          peerName + ' video par aana chahta hai',
-          'Uthao',
-          'Mana karo',
-          async () => {
-            hidePrompt();
-            sendSignal({ type: 'video-accept' });
-            await enableVideo();
-          },
-          () => {
-            hidePrompt();
-            sendSignal({ type: 'video-decline' });
-          }
-        );
+        if (localVideoOn) {
+          // Dono ek saath video chahte the, to seedha mil jao
+          videoRequestPending = false;
+          clearTimeout(videoRequestTimer);
+          sendSignal({ type: 'video-accept' });
+          await sendCamera();
+        } else {
+          showIncoming(
+            'Video call',
+            peerName,
+            true,
+            async () => {
+              hideIncoming();
+              sendSignal({ type: 'video-accept' });
+              if (await startCamera()) await sendCamera();
+            },
+            () => {
+              hideIncoming();
+              sendSignal({ type: 'video-decline' });
+            }
+          );
+        }
         break;
       case 'video-accept':
         videoRequestPending = false;
-        await enableVideo();
+        clearTimeout(videoRequestTimer);
+        if (localVideoOn) await sendCamera();
         break;
       case 'video-decline':
         videoRequestPending = false;
+        clearTimeout(videoRequestTimer);
+        await stopCamera();
         toast(peerName + ' ne video nahi liya');
         break;
       case 'video-state':
         remoteVideoOn = data.on === true;
+        if (!remoteVideoOn) swapped = false;
         updateCallUI();
         break;
     }
@@ -1694,47 +1830,103 @@ function toggleSpeaker() {
   updateCallUI();
 }
 
-function toggleVideo() {
+/* Video button: camera turant chalu, samne wala uthaye tab meri video usko jati hai */
+async function toggleVideo() {
   if (callState !== 'incall' || !videoSender) return;
-  if (localVideoOn) return disableVideo();
-  if (remoteVideoOn) return enableVideo(); // samne wala pehle se video par hai
-  if (videoRequestPending) return;
+  if (localVideoOn) {
+    await stopCamera();
+    return;
+  }
+  if (!(await startCamera())) return;
+  if (remoteVideoOn) {
+    // Samne wala pehle se video par hai, puchne ki zaroorat nahi
+    await sendCamera();
+    return;
+  }
   videoRequestPending = true;
-  toast('Video ke liye puch raha hoon...');
   sendSignal({ type: 'video-request' });
-  setTimeout(() => {
+  toast('Video ke liye puch raha hoon...');
+  clearTimeout(videoRequestTimer);
+  videoRequestTimer = setTimeout(async () => {
     if (videoRequestPending) {
       videoRequestPending = false;
+      await stopCamera();
       toast('Video ka jawab nahi aaya');
     }
   }, 20000);
 }
 
-async function enableVideo() {
-  if (!videoSender || callState !== 'incall') return;
+// Camera chalu (HD maangte hain), abhi sirf mujhe dikhta hai
+async function startCamera() {
   try {
-    const s = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' } });
+    const s = await navigator.mediaDevices.getUserMedia({
+      video: {
+        facingMode: 'user',
+        width: { ideal: 1280 },
+        height: { ideal: 720 },
+        frameRate: { ideal: 30 }
+      }
+    });
     localVideoTrack = s.getVideoTracks()[0];
-    await videoSender.replaceTrack(localVideoTrack);
+    try { localVideoTrack.contentHint = 'detail'; } catch (e) {}
     localVideoEl.srcObject = new MediaStream([localVideoTrack]);
     localVideoOn = true;
     updateCallUI();
-    sendSignal({ type: 'video-state', on: true });
+    return true;
   } catch (err) {
     toast('Camera nahi chal paya, permission check karo');
+    return false;
   }
 }
 
-async function disableVideo() {
+// Meri video samne wale ko bhejna shuru
+async function sendCamera() {
+  if (!videoSender || !localVideoTrack || videoSending || callState !== 'incall') return;
   try {
-    if (localVideoTrack) localVideoTrack.stop();
-    if (videoSender) await videoSender.replaceTrack(null);
-  } catch (e) {}
+    await videoSender.replaceTrack(localVideoTrack);
+    videoSending = true;
+    sendSignal({ type: 'video-state', on: true });
+    tuneVideo();
+    if (!qualityTimer) qualityTimer = setInterval(tuneVideo, 3000);
+  } catch (e) {
+    console.error(e);
+  }
+}
+
+// Camera band
+async function stopCamera() {
+  const wasSending = videoSending;
+  videoRequestPending = false;
+  clearTimeout(videoRequestTimer);
+  if (qualityTimer) { clearInterval(qualityTimer); qualityTimer = null; }
+  if (localVideoTrack) localVideoTrack.stop();
   localVideoTrack = null;
   localVideoEl.srcObject = null;
   localVideoOn = false;
+  videoSending = false;
+  swapped = false;
+  try { if (videoSender && wasSending) await videoSender.replaceTrack(null); } catch (e) {}
+  if (wasSending) sendSignal({ type: 'video-state', on: false });
   updateCallUI();
-  sendSignal({ type: 'video-state', on: false });
+}
+
+// Internet ke hisaab se quality: tez ho to 720p HD, slow ho to 480p tak (usse neeche nahi)
+async function tuneVideo() {
+  if (!pc || !videoSender || !videoSending) return;
+  try {
+    let bw = 0;
+    const stats = await pc.getStats();
+    stats.forEach((r) => {
+      if (r.type === 'candidate-pair' && r.state === 'succeeded' && (r.nominated || r.selected) && r.availableOutgoingBitrate) {
+        bw = r.availableOutgoingBitrate;
+      }
+    });
+    const p = videoSender.getParameters();
+    if (!p.encodings || !p.encodings.length) p.encodings = [{}];
+    p.encodings[0].maxBitrate = 2500000;
+    p.encodings[0].scaleResolutionDownBy = (bw && bw < 900000) ? 1.5 : 1;
+    await videoSender.setParameters(p);
+  } catch (e) {}
 }
 
 function hangUp() {
@@ -1745,9 +1937,11 @@ function hangUp() {
 
 function cleanupCall(msg) {
   stopRing();
-  hidePrompt();
+  hideIncoming();
   clearTimeout(callTimeout);
+  clearTimeout(videoRequestTimer);
   if (callTimer) { clearInterval(callTimer); callTimer = null; }
+  if (qualityTimer) { clearInterval(qualityTimer); qualityTimer = null; }
   if (pc) { try { pc.close(); } catch (e) {} pc = null; }
   if (localStream) localStream.getTracks().forEach((t) => t.stop());
   if (localVideoTrack) localVideoTrack.stop();
@@ -1755,8 +1949,10 @@ function cleanupCall(msg) {
   localVideoTrack = null;
   videoSender = null;
   localVideoOn = false;
+  videoSending = false;
   remoteVideoOn = false;
   videoRequestPending = false;
+  swapped = false;
   micOn = true;
   pendingCandidates = [];
   incomingCall = null;
