@@ -13,8 +13,9 @@ const app = express();
 const server = http.createServer(app);
 const io = socketIo(server);
 
-// Secret chat mein kitne din ke messages dikhane hain
-const HISTORY_DAYS = 5;
+// Secret chat mein ek baar mein kitne messages / media laane hain
+const HISTORY_PAGE = 100;
+const MEDIA_PAGE = 60;
 
 // ---------- Firebase setup ----------
 let db = null;
@@ -78,8 +79,41 @@ if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
 
 const upload = multer({ dest: uploadDir, limits: { fileSize: 100 * 1024 * 1024 } });
 
+app.use(express.json({ limit: '10kb' }));
 app.use(express.static(path.join(__dirname, 'public')));
 
+// Seedha upload: phone ko B2 mein file bhejne ka chhota temporary link do.
+// File server se nahi guzarti, isliye Render ka data nahi lagta.
+app.post('/presign-upload', async (req, res) => {
+  if (!s3) return res.status(503).json({ error: 'B2 not configured' });
+
+  const { type, name, secret } = req.body || {};
+  if (typeof type !== 'string' || !/^(image|video)\/[a-zA-Z0-9.+-]+$/.test(type)) {
+    return res.status(400).json({ error: 'Bad type' });
+  }
+
+  try {
+    const ext = path
+      .extname(typeof name === 'string' ? name : '')
+      .toLowerCase()
+      .replace(/[^a-z0-9.]/g, '')
+      .slice(0, 10);
+    const key = (secret === true ? 'secret-' : 'normal-') + makeId() + ext;
+
+    const uploadUrl = await getSignedUrl(
+      s3,
+      new PutObjectCommand({ Bucket: B2_BUCKET, Key: key, ContentType: type }),
+      { expiresIn: 600 }
+    );
+
+    res.json({ uploadUrl, url: '/media/' + key, key, type });
+  } catch (err) {
+    console.error('Presign failed:', err.message);
+    res.status(500).json({ error: 'Presign failed' });
+  }
+});
+
+// Purana tareeka (sirf backup ke liye): file server se hokar B2 jati hai
 app.post('/upload', upload.single('file'), async (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'No file' });
 
@@ -118,7 +152,8 @@ app.post('/upload', upload.single('file'), async (req, res) => {
   }
 });
 
-// B2 ki private file dikhane ke liye: ek ghante ka temporary link bana ke wahan bhej do
+// B2 ki private file dikhane ke liye: ek ghante ka temporary link bana ke wahan bhej do.
+// Asli file seedha B2 se aati hai, Render se nahi.
 app.get('/media/:key', async (req, res) => {
   if (!s3) return res.status(404).end();
   const key = req.params.key;
@@ -369,13 +404,11 @@ io.on('connection', (socket) => {
       socket.data.failedAttempts = 0;
       socket.data.unlocked = true;
 
-      // Sirf pichhle HISTORY_DAYS din ke messages
-      const since = Date.now() - HISTORY_DAYS * 24 * 60 * 60 * 1000;
+      // Sirf aakhri HISTORY_PAGE messages. Purane messages scroll karne par alag se aate hain.
       const msgs = await roomRef(roomCode)
         .collection('secretMessages')
-        .where('ts', '>=', since)
         .orderBy('ts', 'desc')
-        .limit(1000)
+        .limit(HISTORY_PAGE)
         .get();
       const history = msgs.docs.map((d) => d.data()).reverse();
       socket.emit('history', history);
@@ -385,20 +418,40 @@ io.on('connection', (socket) => {
     }
   });
 
-  // Secret chat ki saari media ki list (media button ke liye)
-  socket.on('get-media', async () => {
+  // Upar scroll karne par aur purane secret messages
+  socket.on('load-more-history', async ({ before } = {}) => {
     const { roomCode, unlocked } = socket.data;
     if (!roomCode || !unlocked || !db) return;
+    if (typeof before !== 'number') return socket.emit('history-more-error');
+
     try {
-      const snap = await roomRef(roomCode)
-        .collection('secretMedia')
+      const msgs = await roomRef(roomCode)
+        .collection('secretMessages')
+        .where('ts', '<', before)
         .orderBy('ts', 'desc')
-        .limit(300)
+        .limit(HISTORY_PAGE)
         .get();
-      socket.emit('media-list', snap.docs.map((d) => d.data()));
+      socket.emit('history-more', msgs.docs.map((d) => d.data()).reverse());
+    } catch (err) {
+      console.error('More history failed:', err.message);
+      socket.emit('history-more-error');
+    }
+  });
+
+  // Secret chat ki media ki list (media button ke liye), MEDIA_PAGE ki kishton mein
+  socket.on('get-media', async ({ before } = {}) => {
+    const { roomCode, unlocked } = socket.data;
+    if (!roomCode || !unlocked || !db) return;
+    const append = typeof before === 'number';
+    try {
+      let q = roomRef(roomCode).collection('secretMedia');
+      if (append) q = q.where('ts', '<', before);
+      const snap = await q.orderBy('ts', 'desc').limit(MEDIA_PAGE).get();
+      const items = snap.docs.map((d) => d.data());
+      socket.emit('media-list', { items, append, done: items.length < MEDIA_PAGE });
     } catch (err) {
       console.error('Media list failed:', err.message);
-      socket.emit('media-list', []);
+      socket.emit('media-list', { items: [], append, done: true });
     }
   });
 
