@@ -143,8 +143,61 @@ body.swiping { user-select: none; -webkit-user-select: none; }
 .msg .sender { font-size: 12px; color: #888; margin-bottom: 2px; }
 .msg .time { font-size: 10px; color: #aaa; margin-bottom: 2px; }
 .msg img, .msg video { max-width: 220px; border-radius: 10px; display: block; margin-top: 4px; }
+.msg .bubble a[download] { display: inline-block; margin-top: 4px; }
 .system-msg { text-align: center; color: #999; font-size: 13px; margin: 8px 0; }
 .hist-empty { text-align: center; color: #999; margin-top: 30px; font-size: 14px; }
+.history-loader { text-align: center; color: #999; font-size: 12px; padding: 6px; }
+
+/* Photo / video ke dibbe (tap karne par load hote hain) */
+.media-box {
+  position: relative;
+  width: 220px;
+  max-width: 100%;
+  height: 160px;
+  border-radius: 10px;
+  background: #2b2b33;
+  overflow: hidden;
+  margin-top: 4px;
+  cursor: pointer;
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.media-box video {
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  margin: 0;
+  border-radius: 0;
+  object-fit: cover;
+  background: #2b2b33;
+}
+.media-box .ph-label {
+  position: absolute;
+  left: 8px;
+  bottom: 6px;
+  font-size: 11px;
+  opacity: 0.85;
+}
+.play-btn {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.play-circle {
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  background: rgba(0,0,0,0.55);
+  border: 2px solid rgba(255,255,255,0.9);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.play-circle svg { width: 24px; height: 24px; fill: #fff; margin-left: 3px; }
 
 /* Jo message abhi gaya nahi (network nahi hai) - ghadi wala nishan */
 .msg.pending .bubble { opacity: 0.7; }
@@ -346,6 +399,15 @@ body.swiping { user-select: none; -webkit-user-select: none; }
   background: #ddd;
 }
 .media-item small { display: block; font-size: 10px; color: #777; margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.grid-note { grid-column: 1 / -1; text-align: center; color: #999; font-size: 13px; padding: 10px; }
+.grid-note button {
+  border: none;
+  background: #764ba2;
+  color: #fff;
+  padding: 8px 16px;
+  border-radius: 16px;
+  cursor: pointer;
+}
 
 /* Call screen (iPhone jaisa) */
 #call-screen {
@@ -496,8 +558,8 @@ body.swiping { user-select: none; -webkit-user-select: none; }
     <symbol id="i-mic" viewBox="0 0 24 24"><path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm5.3-3c0 3-2.54 5.1-5.3 5.1S6.7 14 6.7 11H5c0 3.41 2.72 6.23 6 6.72V21h2v-3.28c3.28-.48 6-3.3 6-6.72h-1.7z"/></symbol>
     <symbol id="i-mic-off" viewBox="0 0 24 24"><use href="#i-mic"/><path d="M4 4L20 20" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" fill="none"/></symbol>
     <symbol id="i-speaker" viewBox="0 0 24 24"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/></symbol>
-    <symbol id="i-speaker-off" viewBox="0 0 24 24"><use href="#i-speaker"/><path d="M4 4L20 20" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" fill="none"/></symbol>
     <symbol id="i-video" viewBox="0 0 24 24"><path d="M17 10.5V7c0-.55-.45-1-1-1H4c-.55 0-1 .45-1 1v10c0 .55.45 1 1 1h12c.55 0 1-.45 1-1v-3.5l4 4v-11l-4 4z"/></symbol>
+    <symbol id="i-play" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></symbol>
     <!-- Photos (gallery) ka rangeen phool -->
     <symbol id="i-photos" viewBox="0 0 24 24">
       <ellipse cx="12" cy="6.6" rx="3" ry="4.6" fill="#f5584f" opacity=".85"/>
@@ -641,6 +703,9 @@ const secretMsgInput = document.getElementById('secret-msg-input');
 const typingLine = document.getElementById('typing-indicator');
 const secretTypingLine = document.getElementById('secret-typing-indicator');
 
+// Server ke saath same: ek baar mein kitne secret messages aate hain
+const HISTORY_PAGE = 100;
+
 let myName = "";
 let myRoom = "";
 let joined = false;
@@ -664,6 +729,11 @@ let awaitingRejoin = false;
 let awaitingSecret = false;
 let secretPass = '';   // sirf memory mein, refresh karte hi hat jata hai
 let triedPass = '';
+
+/* Secret chat mein upar scroll karne par purane messages */
+let historyHasMore = false;
+let historyLoadingMore = false;
+let historyOldestTs = null;
 
 function secretIsOpen() {
   return historyPanel.style.display === 'flex';
@@ -931,7 +1001,7 @@ let lastTap = { el: null, t: 0 };
 function attachDoubleTap(container) {
   container.addEventListener('click', (e) => {
     if (Date.now() < suppressTapUntil) return;
-    if (e.target.closest('a, video, button, .quoted')) return;
+    if (e.target.closest('a, video, button, .quoted, .media-box')) return;
     const el = e.target.closest('.msg');
     if (!el) return;
     const now = Date.now();
@@ -977,7 +1047,49 @@ function applyHeart(container, id, name, on) {
 socket.on('heart', ({ id, name, on }) => applyHeart(messagesBox, id, name, on));
 socket.on('secret-heart', ({ id, name, on }) => applyHeart(historyList, id, name, on));
 
-/* ---------- Media upload (normal chat) ---------- */
+/* ---------- Media upload: seedha phone se Backblaze (Render se nahi guzarti) ---------- */
+async function uploadFile(file, isSecret) {
+  if (file.size > 100 * 1024 * 1024) throw new Error('too-big');
+  toast('Uploading...');
+
+  try {
+    // 1) server se chhota upload-link lo
+    const pres = await fetch('/presign-upload', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ type: file.type, name: file.name, secret: isSecret })
+    });
+    if (!pres.ok) throw new Error('presign');
+    const p = await pres.json();
+
+    // 2) file seedha Backblaze ko bhejo
+    const put = await fetch(p.uploadUrl, {
+      method: 'PUT',
+      headers: { 'Content-Type': file.type },
+      body: file
+    });
+    if (!put.ok) throw new Error('put');
+
+    return { url: p.url, type: file.type };
+  } catch (err) {
+    // Seedha upload na chale to purane tareeke se (server se hokar) bhej do
+    console.warn('Direct upload failed, using server:', err);
+    toast('Seedha upload nahi chala, server se bhej raha hoon');
+    const formData = new FormData();
+    formData.append('file', file);
+    const res = await fetch('/upload' + (isSecret ? '?secret=1' : ''), { method: 'POST', body: formData });
+    const result = await res.json();
+    if (!result.url) throw new Error('upload');
+    return result;
+  }
+}
+
+function uploadErrorText(err) {
+  return err && err.message === 'too-big'
+    ? 'File bahut badi hai, 100 MB se chhoti rakho'
+    : 'Upload failed, please try again';
+}
+
 msgInput.addEventListener('keypress', (e) => {
   if (e.key === 'Enter') sendMessage();
 });
@@ -986,18 +1098,12 @@ document.getElementById('media-input').addEventListener('change', async (e) => {
   const file = e.target.files[0];
   if (!file) return;
 
-  const formData = new FormData();
-  formData.append('file', file);
-
   try {
-    const res = await fetch('/upload', { method: 'POST', body: formData });
-    const result = await res.json();
-    if (result.url) {
-      sendOrQueue(false, 'media-message', { url: result.url, type: result.type, replyTo: replyingTo });
-      cancelReply();
-    }
+    const result = await uploadFile(file, false);
+    sendOrQueue(false, 'media-message', { url: result.url, type: result.type, replyTo: replyingTo });
+    cancelReply();
   } catch (err) {
-    alert('Upload failed, please try again');
+    alert(uploadErrorText(err));
   }
   e.target.value = '';
 });
@@ -1035,6 +1141,85 @@ function addMediaMessage(id, name, url, type, mine, replyTo) {
   scrollDown();
 }
 
+/* ---------- Video ka pehla frame (jab dibba screen par aaye tabhi) ---------- */
+const lazyVideos = ('IntersectionObserver' in window)
+  ? new IntersectionObserver((entries) => {
+      entries.forEach((en) => {
+        if (en.isIntersecting) {
+          loadVideoSrc(en.target);
+          lazyVideos.unobserve(en.target);
+        }
+      });
+    }, { rootMargin: '150px' })
+  : null;
+
+function loadVideoSrc(v) {
+  if (v.dataset.loaded || !v.dataset.src) return;
+  v.dataset.loaded = '1';
+  v.preload = 'metadata';
+  v.src = v.dataset.src + '#t=0.1';
+}
+
+/* Photo ka dibba: tap karne par asli photo load hoti hai */
+function makeImageBox(url) {
+  const box = document.createElement('div');
+  box.className = 'media-box';
+  box.innerHTML =
+    '<svg class="ic" style="width:40px;height:40px"><use href="#i-photos"/></svg>' +
+    '<span class="ph-label">Photo</span>';
+  let loading = false;
+  box.addEventListener('click', () => {
+    if (Date.now() < suppressTapUntil || loading) return;
+    loading = true;
+    const label = box.querySelector('.ph-label');
+    label.innerText = 'Loading...';
+    const img = new Image();
+    img.onload = () => { box.replaceWith(img); };
+    img.onerror = () => {
+      loading = false;
+      label.innerText = 'Load nahi hui, dobara tap karo';
+    };
+    img.src = url;
+  });
+  return box;
+}
+
+/* Video ka dibba: pehla frame + tikona play button, tap karne par wahin chalne lagti hai */
+function makeVideoBox(url) {
+  const box = document.createElement('div');
+  box.className = 'media-box';
+
+  const v = document.createElement('video');
+  v.muted = true;
+  v.playsInline = true;
+  v.setAttribute('playsinline', '');
+  v.preload = 'none';
+  v.dataset.src = url;
+
+  const btn = document.createElement('div');
+  btn.className = 'play-btn';
+  btn.innerHTML = '<div class="play-circle"><svg viewBox="0 0 24 24"><use href="#i-play"/></svg></div>';
+
+  box.appendChild(v);
+  box.appendChild(btn);
+
+  if (lazyVideos) lazyVideos.observe(v);
+  else loadVideoSrc(v);
+
+  btn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (Date.now() < suppressTapUntil) return;
+    btn.remove();
+    loadVideoSrc(v);
+    v.preload = 'auto';
+    v.muted = false;
+    v.controls = true;
+    const p = v.play();
+    if (p && p.catch) p.catch(() => {});
+  });
+  return box;
+}
+
 /* Dono chats ke liye common message banane wale functions */
 function buildTextItem(id, name, text, mine, replyTo, ts, edited) {
   const wrap = document.createElement('div');
@@ -1058,21 +1243,21 @@ function buildMediaItem(id, name, url, type, mine, replyTo, ts) {
   const wrap = document.createElement('div');
   wrap.className = 'msg' + (mine ? ' mine' : '');
   wrap.setAttribute('data-id', id);
-  let mediaTag = '';
+  const isImg = !!(type && type.startsWith('image/'));
+  const isVid = !!(type && type.startsWith('video/'));
   let label = '\uD83D\uDCCE File';
-  if (type && type.startsWith('image/')) {
-    mediaTag = '<img src="' + url + '">';
-    label = '\uD83D\uDCF7 Photo';
-  } else if (type && type.startsWith('video/')) {
-    mediaTag = '<video src="' + url + '" controls></video>';
-    label = '\uD83C\uDFA5 Video';
-  }
+  if (isImg) label = '\uD83D\uDCF7 Photo';
+  else if (isVid) label = '\uD83C\uDFA5 Video';
   wrap._reply = { id, name, preview: label };
   wrap.innerHTML =
     '<div class="sender">' + (mine ? '' : escapeHtml(name)) + '</div>' +
     (ts ? '<div class="time">' + escapeHtml(new Date(ts).toLocaleString()) + '</div>' : '') +
-    '<div class="bubble">' + buildQuotedHtml(replyTo) + mediaTag +
-    '<br><a href="' + url + '" download>Download</a></div>';
+    '<div class="bubble">' + buildQuotedHtml(replyTo) +
+    '<div class="media-slot"></div>' +
+    '<a href="' + escapeHtml(url) + '" download>Download</a></div>';
+  const slot = wrap.querySelector('.media-slot');
+  if (isImg) slot.appendChild(makeImageBox(url));
+  else if (isVid) slot.appendChild(makeVideoBox(url));
   return wrap;
 }
 
@@ -1243,7 +1428,7 @@ heartBtn.addEventListener('contextmenu', (e) => e.preventDefault());
 
 /* ---------- Secret chat ---------- */
 
-// Sahi password par server purane secret messages bhejta hai
+// Sahi password par server aakhri 100 secret messages bhejta hai
 socket.on('history', (items) => {
   closeModal();
   if (triedPass) { secretPass = triedPass; triedPass = ''; }
@@ -1256,6 +1441,10 @@ socket.on('history', (items) => {
   }
 
   historyList.innerHTML = '';
+  historyHasMore = items.length >= HISTORY_PAGE;
+  historyLoadingMore = false;
+  historyOldestTs = items.length ? items[0].ts : null;
+
   if (!items.length) {
     const empty = document.createElement('div');
     empty.className = 'hist-empty';
@@ -1279,6 +1468,55 @@ socket.on('history', (items) => {
   if (awaitingSecret) flushSecretPending();
 });
 
+// Upar scroll karte hi aur purane messages mangwao
+function showHistLoader() {
+  if (document.getElementById('hist-loader')) return;
+  const d = document.createElement('div');
+  d.id = 'hist-loader';
+  d.className = 'history-loader';
+  d.innerText = 'Loading older messages...';
+  historyList.insertBefore(d, historyList.firstChild);
+}
+
+function removeHistLoader() {
+  const d = document.getElementById('hist-loader');
+  if (d) d.remove();
+}
+
+function loadOlderHistory() {
+  if (!secretIsOpen() || !historyHasMore || historyLoadingMore) return;
+  if (!historyOldestTs || !socket.connected) return;
+  historyLoadingMore = true;
+  showHistLoader();
+  socket.emit('load-more-history', { before: historyOldestTs });
+}
+
+historyList.addEventListener('scroll', () => {
+  if (historyList.scrollTop < 80) loadOlderHistory();
+});
+
+socket.on('history-more', (items) => {
+  historyLoadingMore = false;
+  removeHistLoader();
+  if (!secretIsOpen()) return;
+  historyHasMore = items.length >= HISTORY_PAGE;
+  if (!items.length) return;
+  historyOldestTs = items[0].ts;
+
+  // Purane messages upar jodo, par jahan padh rahe the wahin tike raho
+  const prevHeight = historyList.scrollHeight;
+  const prevTop = historyList.scrollTop;
+  const frag = document.createDocumentFragment();
+  items.forEach((m) => frag.appendChild(buildSecretEl(m)));
+  historyList.insertBefore(frag, historyList.firstChild);
+  historyList.scrollTop = prevTop + (historyList.scrollHeight - prevHeight);
+});
+
+socket.on('history-more-error', () => {
+  historyLoadingMore = false;
+  removeHistLoader();
+});
+
 // Naya secret message (sirf unlock kiye hue logon ko aata hai)
 socket.on('secret-message', (m) => {
   if (!secretIsOpen()) return;
@@ -1293,10 +1531,7 @@ socket.on('secret-message-edited', ({ id, newText }) => {
   applyEdit(historyList, id, newText);
 });
 
-function addSecretItem(m) {
-  const empty = document.getElementById('hist-empty');
-  if (empty) empty.remove();
-
+function buildSecretEl(m) {
   const mine = m.name === myName;
   const el = (m.kind === 'media' && m.url)
     ? buildMediaItem(m.id, m.name, m.url, m.type, mine, m.replyTo, m.ts)
@@ -1305,7 +1540,13 @@ function addSecretItem(m) {
     el._hearts = new Set(m.hearts);
     renderHearts(el);
   }
-  historyList.appendChild(el);
+  return el;
+}
+
+function addSecretItem(m) {
+  const empty = document.getElementById('hist-empty');
+  if (empty) empty.remove();
+  historyList.appendChild(buildSecretEl(m));
 }
 
 function startSecretReply(r) {
@@ -1338,18 +1579,12 @@ document.getElementById('secret-media-input').addEventListener('change', async (
   const file = e.target.files[0];
   if (!file) return;
 
-  const formData = new FormData();
-  formData.append('file', file);
-
   try {
-    const res = await fetch('/upload?secret=1', { method: 'POST', body: formData });
-    const result = await res.json();
-    if (result.url) {
-      sendOrQueue(true, 'secret-media-message', { url: result.url, type: result.type, replyTo: secretReplyingTo });
-      cancelSecretReply();
-    }
+    const result = await uploadFile(file, true);
+    sendOrQueue(true, 'secret-media-message', { url: result.url, type: result.type, replyTo: secretReplyingTo });
+    cancelSecretReply();
   } catch (err) {
-    alert('Upload failed, please try again');
+    alert(uploadErrorText(err));
   }
   e.target.value = '';
 });
@@ -1361,6 +1596,9 @@ function closeHistory() {
   closeMedia();
   historyPanel.style.display = 'none';
   historyList.innerHTML = '';
+  historyHasMore = false;
+  historyLoadingMore = false;
+  historyOldestTs = null;
   cancelSecretReply();
   // Khud bahar aaye to ruke hue secret messages aur password dono hat jayein
   pendingSecret.length = 0;
@@ -1374,34 +1612,43 @@ function closeHistory() {
 /* ---------- Secret media (gallery) ---------- */
 const mediaPanel = document.getElementById('media-panel');
 const mediaGrid = document.getElementById('media-grid');
+let mediaOldestTs = null;
+
+function gridNote(text) {
+  const d = document.createElement('div');
+  d.className = 'grid-note';
+  d.innerText = text;
+  return d;
+}
 
 function openMedia() {
   mediaGrid.innerHTML = '';
-  const loading = document.createElement('div');
-  loading.className = 'hist-empty';
-  loading.style.gridColumn = '1 / -1';
-  loading.innerText = 'Loading...';
-  mediaGrid.appendChild(loading);
+  mediaOldestTs = null;
+  mediaGrid.appendChild(gridNote('Loading...'));
   mediaPanel.style.display = 'flex';
-  socket.emit('get-media');
+  socket.emit('get-media', {});
 }
 
 function closeMedia() {
   mediaPanel.style.display = 'none';
   mediaGrid.innerHTML = '';
+  mediaOldestTs = null;
 }
 
-socket.on('media-list', (items) => {
+socket.on('media-list', (res) => {
   if (mediaPanel.style.display !== 'flex') return;
-  mediaGrid.innerHTML = '';
-  if (!items || !items.length) {
-    const empty = document.createElement('div');
-    empty.className = 'hist-empty';
-    empty.style.gridColumn = '1 / -1';
-    empty.innerText = 'Abhi koi media nahi hai';
-    mediaGrid.appendChild(empty);
+  const items = (res && res.items) || [];
+  const append = !!(res && res.append);
+
+  // "Loading..." ya "Aur dikhao" wali purani line hata do
+  mediaGrid.querySelectorAll('.grid-note').forEach((n) => n.remove());
+  if (!append) mediaGrid.innerHTML = '';
+
+  if (!items.length && !append) {
+    mediaGrid.appendChild(gridNote('Abhi koi media nahi hai'));
     return;
   }
+
   items.forEach((m) => {
     if (!m.url) return;
     const cell = document.createElement('div');
@@ -1413,9 +1660,13 @@ socket.on('media-list', (items) => {
     let thumb;
     if (m.type && m.type.startsWith('video/')) {
       thumb = document.createElement('video');
-      thumb.src = m.url;
-      thumb.preload = 'metadata';
       thumb.muted = true;
+      thumb.playsInline = true;
+      thumb.setAttribute('playsinline', '');
+      thumb.preload = 'none';
+      thumb.dataset.src = m.url;
+      if (lazyVideos) lazyVideos.observe(thumb);
+      else loadVideoSrc(thumb);
     } else {
       thumb = document.createElement('img');
       thumb.src = m.url;
@@ -1428,6 +1679,21 @@ socket.on('media-list', (items) => {
     cell.appendChild(cap);
     mediaGrid.appendChild(cell);
   });
+
+  if (items.length) mediaOldestTs = items[items.length - 1].ts;
+
+  if (res && res.done === false && mediaOldestTs) {
+    const note = gridNote('');
+    const btn = document.createElement('button');
+    btn.innerText = 'Aur dikhao';
+    btn.onclick = () => {
+      note.remove();
+      mediaGrid.appendChild(gridNote('Loading...'));
+      socket.emit('get-media', { before: mediaOldestTs });
+    };
+    note.appendChild(btn);
+    mediaGrid.appendChild(note);
+  }
 });
 
 /* ---------- Call (audio + video) ---------- */
@@ -1459,6 +1725,7 @@ let videoRequestPending = false;
 let videoRequestTimer = null;
 let swapped = false;            // chhoti/badi window badli hui hai ya nahi
 let micOn = true;
+let speakerOn = false;
 let pendingCandidates = [];
 let callTimeout = null;
 let callTimer = null;
@@ -1554,8 +1821,8 @@ function updateCallUI() {
   layoutVideos();
   setIcon('mute-btn', micOn ? 'i-mic' : 'i-mic-off');
   document.getElementById('mute-btn').classList.toggle('active', !micOn);
-  setIcon('speaker-btn', remoteVideo.muted ? 'i-speaker-off' : 'i-speaker');
-  document.getElementById('speaker-btn').classList.toggle('active', remoteVideo.muted);
+  setIcon('speaker-btn', 'i-speaker');
+  document.getElementById('speaker-btn').classList.toggle('active', speakerOn);
   document.getElementById('video-btn').classList.toggle('active', localVideoOn);
 }
 
@@ -1824,10 +2091,29 @@ function toggleMute() {
   updateCallUI();
 }
 
-// Samne wale ki awaaz on/off (phone ka speaker/kaan wala switch browser se nahi hota)
-function toggleSpeaker() {
-  remoteVideo.muted = !remoteVideo.muted;
-  updateCallUI();
+// Speaker: awaaz kabhi band nahi hoti. Jahan browser allow kare wahan loudspeaker aur kaan
+// wale speaker ke beech badalta hai, warna bata deta hai ki ye phone mein nahi ho sakta.
+async function toggleSpeaker() {
+  if (typeof remoteVideo.setSinkId !== 'function') {
+    toast('Is phone mein speaker yahan se nahi badalta. iPhone mein Control Center se Speaker chuno');
+    return;
+  }
+  try {
+    const devs = (await navigator.mediaDevices.enumerateDevices()).filter((d) => d.kind === 'audiooutput');
+    const speaker = devs.find((d) => /speaker/i.test(d.label));
+    if (!speaker || devs.length < 2) {
+      toast('Is phone mein ye option nahi mila');
+      return;
+    }
+    const other = devs.find((d) => d.deviceId !== speaker.deviceId);
+    speakerOn = !speakerOn;
+    await remoteVideo.setSinkId(speakerOn ? speaker.deviceId : other.deviceId);
+    updateCallUI();
+  } catch (err) {
+    speakerOn = false;
+    toast('Speaker badal nahi paya');
+    updateCallUI();
+  }
 }
 
 /* Video button: camera turant chalu, samne wala uthaye tab meri video usko jati hai */
@@ -1954,12 +2240,12 @@ function cleanupCall(msg) {
   videoRequestPending = false;
   swapped = false;
   micOn = true;
+  speakerOn = false;
   pendingCandidates = [];
   incomingCall = null;
   callPeerId = null;
   callState = 'idle';
   remoteVideo.srcObject = null;
-  remoteVideo.muted = false;
   localVideoEl.srcObject = null;
   callScreen.style.display = 'none';
   updateCallUI();
