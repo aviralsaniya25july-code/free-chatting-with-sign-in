@@ -1,2804 +1,878 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Chat Room</title>
-<style>
-* { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Segoe UI', Arial, sans-serif; }
-body {
-  height: 100vh;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-}
-body.swiping { user-select: none; -webkit-user-select: none; }
+const express = require('express');
+const http = require('http');
+const socketIo = require('socket.io');
+const path = require('path');
+const multer = require('multer');
+const fs = require('fs');
+const crypto = require('crypto');
+const admin = require('firebase-admin');
+const { S3Client, PutObjectCommand, GetObjectCommand } = require('@aws-sdk/client-s3');
+const { getSignedUrl } = require('@aws-sdk/s3-request-presigner');
 
-/* Icons (SVG) */
-.ic { width: 20px; height: 20px; fill: currentColor; display: block; }
+const app = express();
+const server = http.createServer(app);
+const io = socketIo(server);
 
-#join-screen {
-  background: white;
-  padding: 40px;
-  border-radius: 16px;
-  box-shadow: 0 10px 40px rgba(0,0,0,0.3);
-  width: 320px;
-  text-align: center;
-}
-#join-screen h1 { margin-bottom: 20px; color: #764ba2; }
-#join-screen input {
-  width: 100%;
-  padding: 12px;
-  margin: 8px 0;
-  border: 2px solid #ddd;
-  border-radius: 8px;
-  font-size: 15px;
-}
-#join-screen button {
-  width: 100%;
-  padding: 12px;
-  margin-top: 12px;
-  background: #764ba2;
-  color: white;
-  border: none;
-  border-radius: 8px;
-  font-size: 16px;
-  cursor: pointer;
-}
-
-#chat-screen {
-  display: none;
-  position: relative;
-  width: 400px;
-  height: 600px;
-  background: white;
-  border-radius: 16px;
-  box-shadow: 0 10px 40px rgba(0,0,0,0.3);
-  flex-direction: column;
-  overflow: hidden;
-}
-#chat-header {
-  background: #764ba2;
-  color: white;
-  padding: 16px;
-  font-size: 18px;
-  font-weight: bold;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-}
-#room-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-#header-actions { display: flex; align-items: center; gap: 8px; }
-.hdr-btn {
-  border: none;
-  background: rgba(255,255,255,0.2);
-  color: white;
-  font-size: 14px;
-  padding: 6px 10px;
-  border-radius: 14px;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-#perm-btn {
-  border: none;
-  background: rgba(255,255,255,0.2);
-  color: white;
-  font-size: 12px;
-  padding: 6px 10px;
-  border-radius: 14px;
-  cursor: pointer;
-  display: none;
-}
-#heart-btn {
-  display: none;
-  border: none;
-  background: transparent;
-  font-size: 18px;
-  cursor: pointer;
-  opacity: 0.55;
-  user-select: none;
-  -webkit-user-select: none;
-  -webkit-touch-callout: none;
-}
-
-/* Messages area (normal chat aur secret chat dono ke liye) */
-#messages, #history-list {
-  flex: 1;
-  padding: 16px;
-  overflow-y: auto;
-  overflow-x: hidden;
-  background: #f5f5f5;
-}
-.msg {
-  margin-bottom: 10px;
-  max-width: 75%;
-  position: relative;
-  touch-action: pan-y;
-}
-.msg.mine { margin-left: auto; text-align: right; }
-.msg::before {
-  content: '\21A9';
-  position: absolute;
-  left: -26px;
-  top: 50%;
-  transform: translateY(-50%);
-  color: #764ba2;
-  font-size: 18px;
-  opacity: var(--swipe, 0);
-}
-.msg.swipe-ready::before { font-weight: bold; }
-.msg .bubble {
-  display: inline-block;
-  padding: 10px 14px;
-  border-radius: 14px;
-  background: #e0e0e0;
-  text-align: left;
-  word-break: break-word;
-}
-.msg.mine .bubble { background: #764ba2; color: white; }
-.msg .sender { font-size: 12px; color: #888; margin-bottom: 2px; }
-.msg .time { font-size: 10px; color: #aaa; margin-bottom: 2px; }
-.msg img, .msg video { max-width: 220px; border-radius: 10px; display: block; margin-top: 4px; }
-.msg .bubble a[download] { display: inline-block; margin-top: 4px; }
-.system-msg { text-align: center; color: #999; font-size: 13px; margin: 8px 0; }
-.hist-empty { text-align: center; color: #999; margin-top: 30px; font-size: 14px; }
-.history-loader { text-align: center; color: #999; font-size: 12px; padding: 6px; }
-
-/* Photo / video ke dibbe (tap karne par load hote hain) */
-.media-box {
-  position: relative;
-  width: 220px;
-  max-width: 100%;
-  height: 160px;
-  border-radius: 10px;
-  background: #2b2b33;
-  overflow: hidden;
-  margin-top: 4px;
-  cursor: pointer;
-  color: #fff;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-.media-box video {
-  width: 100%;
-  height: 100%;
-  max-width: none;
-  margin: 0;
-  border-radius: 0;
-  object-fit: cover;
-  background: #2b2b33;
-}
-.media-box .ph-label {
-  position: absolute;
-  left: 8px;
-  bottom: 6px;
-  font-size: 11px;
-  opacity: 0.85;
-}
-.play-btn {
-  position: absolute;
-  inset: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-.play-circle {
-  width: 52px;
-  height: 52px;
-  border-radius: 50%;
-  background: rgba(0,0,0,0.55);
-  border: 2px solid rgba(255,255,255,0.9);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-.play-circle svg { width: 24px; height: 24px; fill: #fff; margin-left: 3px; }
-
-/* Jo message abhi gaya nahi (network nahi hai) - ghadi wala nishan */
-.msg.pending .bubble { opacity: 0.7; }
-.msg .clock { font-size: 11px; margin-left: 6px; }
-
-/* Double tap se laga dil */
-.msg .hearts { font-size: 13px; margin-top: 2px; }
-
-/* Edit: hold karne par message edit mode mein jata hai aur peela outline dikhta hai */
-.msg.editing .bubble { outline: 3px solid #ffd54f; }
-.msg { -webkit-touch-callout: none; }
-.edited-tag { font-size: 10px; opacity: 0.7; margin-left: 4px; }
-
-/* Links neele rang mein dikhenge (apne purple bubble mein halka neela) */
-.msg a.chat-link { color: #1a73e8; text-decoration: underline; word-break: break-all; }
-.msg.mine a.chat-link { color: #8ecbff; }
-
-/* Message ke andar quoted reply */
-.quoted {
-  border-left: 3px solid #764ba2;
-  background: rgba(0,0,0,0.08);
-  padding: 4px 8px;
-  border-radius: 6px;
-  margin-bottom: 6px;
-  font-size: 12px;
-  cursor: pointer;
-}
-.msg.mine .quoted { border-left-color: white; background: rgba(255,255,255,0.2); }
-.quoted .q-name { font-weight: bold; }
-
-/* Highlight jab quoted message pe click ho */
-.msg.highlight .bubble { outline: 3px solid #ffd54f; }
-
-/* Typing indicator (sada text: "Naam is typing...") - normal aur secret dono mein */
-.typing-line {
-  height: 22px;
-  padding: 2px 16px 0;
-  background: #f5f5f5;
-  font-size: 12px;
-  color: #764ba2;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-/* Reply preview (input ke upar) */
-.reply-preview {
-  display: none;
-  padding: 8px 12px;
-  background: #efe6f7;
-  border-top: 1px solid #ddd;
-  font-size: 13px;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-}
-.reply-preview .rp-text {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  flex: 1;
-}
-.reply-preview button {
-  border: none;
-  background: transparent;
-  font-size: 16px;
-  cursor: pointer;
-  color: #764ba2;
-}
-
-/* Input area (normal aur secret dono) */
-.input-row {
-  display: flex;
-  padding: 12px;
-  border-top: 1px solid #ddd;
-  gap: 8px;
-  align-items: center;
-  background: white;
-}
-.input-row input[type=text] {
-  flex: 1;
-  min-width: 0;
-  padding: 10px;
-  border: 2px solid #ddd;
-  border-radius: 20px;
-  font-size: 14px;
-}
-.input-row button, .input-row label {
-  background: #764ba2;
-  color: white;
-  border: none;
-  border-radius: 50%;
-  width: 42px;
-  height: 42px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  font-size: 18px;
-  flex-shrink: 0;
-}
-.input-row input[type=file] { display: none; }
-
-/* Overlays (password box + secret chat) */
-.overlay {
-  display: none;
-  position: absolute;
-  inset: 0;
-  background: rgba(0,0,0,0.5);
-  z-index: 10;
-  align-items: center;
-  justify-content: center;
-}
-.modal-box {
-  background: white;
-  width: 300px;
-  padding: 20px;
-  border-radius: 14px;
-  text-align: center;
-}
-.modal-box h3 { color: #764ba2; margin-bottom: 8px; }
-.modal-box p { font-size: 12px; color: #777; margin-bottom: 8px; }
-.modal-box input {
-  width: 100%;
-  padding: 10px;
-  margin: 6px 0;
-  border: 2px solid #ddd;
-  border-radius: 8px;
-  font-size: 14px;
-}
-#modal-error, #reason-error { color: #d32f2f; font-size: 12px; min-height: 16px; margin: 4px 0; }
-.modal-actions { display: flex; gap: 8px; margin-top: 6px; }
-.modal-actions button {
-  flex: 1;
-  padding: 10px;
-  border: none;
-  border-radius: 8px;
-  cursor: pointer;
-  font-size: 14px;
-}
-#modal-cancel, #reason-cancel { background: #e0e0e0; }
-#modal-ok, #reason-ok { background: #764ba2; color: white; }
-
-.secret-box {
-  background: white;
-  width: 100%;
-  height: 100%;
-  display: flex;
-  flex-direction: column;
-}
-.secret-head {
-  background: #4a2468;
-  color: white;
-  padding: 14px 16px;
-  font-weight: bold;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-.secret-head button {
-  border: none;
-  background: transparent;
-  color: white;
-  font-size: 16px;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-.secret-head button .ic { width: 22px; height: 22px; }
-.secret-head button.app-ic {
-  width: 30px;
-  height: 30px;
-  background: #fff;
-  border-radius: 8px;
-}
-.secret-head button.app-ic .ic { width: 24px; height: 24px; }
-.secret-actions { display: flex; align-items: center; gap: 12px; }
-
-/* Secret media (gallery) */
-#media-panel { z-index: 20; }
-#media-grid {
-  flex: 1;
-  overflow-y: auto;
-  padding: 10px;
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 6px;
-  align-content: start;
-  background: #f5f5f5;
-}
-.media-item a { display: block; }
-.media-item img, .media-item video {
-  width: 100%;
-  aspect-ratio: 1;
-  object-fit: cover;
-  border-radius: 8px;
-  display: block;
-  background: #ddd;
-}
-.media-item small { display: block; font-size: 10px; color: #777; margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.grid-note { grid-column: 1 / -1; text-align: center; color: #999; font-size: 13px; padding: 10px; }
-.grid-note button {
-  border: none;
-  background: #764ba2;
-  color: #fff;
-  padding: 8px 16px;
-  border-radius: 16px;
-  cursor: pointer;
-}
-
-/* Notes + points (secret chat) */
-#notes-panel { z-index: 20; }
-#notes-btn { position: relative; }
-#notes-dot {
-  display: none;
-  position: absolute;
-  top: -3px;
-  right: -3px;
-  width: 11px;
-  height: 11px;
-  border-radius: 50%;
-  background: #ff3b30;
-  border: 2px solid #4a2468;
-}
-#notes-body {
-  flex: 1;
-  overflow-y: auto;
-  overflow-x: hidden;
-  padding: 12px;
-  background: #f5f5f5;
-}
-.nsec-title { font-size: 13px; font-weight: 600; color: #4a2468; margin: 12px 0 6px; }
-.nsec-title:first-child { margin-top: 0; }
-.small-note { text-align: center; color: #999; font-size: 12px; padding: 8px; }
-#points-row { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
-.pbox {
-  background: #fff;
-  border-radius: 12px;
-  padding: 10px 8px;
-  text-align: center;
-  box-shadow: 0 1px 4px rgba(0,0,0,0.12);
-}
-.pname { font-size: 13px; color: #555; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.pval { font-size: 32px; font-weight: 700; color: #764ba2; margin: 4px 0 8px; }
-.pact { display: flex; justify-content: center; gap: 8px; }
-.pact button {
-  width: 34px;
-  height: 34px;
-  border: none;
-  border-radius: 50%;
-  background: #764ba2;
-  color: #fff;
-  font-size: 20px;
-  line-height: 1;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-.pact button.hist { background: #e0e0e0; color: #4a2468; }
-.pact button .ic { width: 18px; height: 18px; }
-.req-card, .note-item, .hist-item {
-  background: #fff;
-  border-radius: 10px;
-  padding: 8px 10px;
-  margin-bottom: 6px;
-  font-size: 13px;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-  word-break: break-word;
-}
-.req-top { font-weight: 600; color: #333; }
-.req-why { color: #555; margin-top: 2px; }
-.req-wait { color: #999; font-size: 12px; margin-top: 4px; }
-.req-actions { display: flex; gap: 8px; margin-top: 8px; }
-.req-actions button {
-  flex: 1;
-  padding: 8px;
-  border: none;
-  border-radius: 8px;
-  cursor: pointer;
-  font-size: 13px;
-  color: #fff;
-}
-.req-actions button.ok { background: #34c759; }
-.req-actions button.no { background: #ff3b30; }
-.req-actions button:disabled { opacity: 0.5; }
-.note-meta { font-size: 11px; color: #999; margin-bottom: 2px; }
-.note-text { white-space: pre-wrap; color: #333; }
-.note-text a.chat-link { color: #1a73e8; text-decoration: underline; word-break: break-all; }
-.note-add { border: none; border-radius: 12px; margin-bottom: 8px; padding: 8px; }
-#reason-panel, #phist-panel { z-index: 25; }
-#phist-list { flex: 1; overflow-y: auto; padding: 12px; background: #f5f5f5; }
-.hist-sign { font-weight: 700; margin-right: 6px; }
-.hist-sign.plus { color: #2e9e4f; }
-.hist-sign.minus { color: #d32f2f; }
-.hist-status { font-size: 12px; margin-left: 4px; }
-.hist-meta { font-size: 11px; color: #999; margin-top: 3px; }
-
-/* Call screen (iPhone jaisa) */
-#call-screen {
-  z-index: 30;
-  background: linear-gradient(180deg, #3a3a4c 0%, #101018 100%);
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  overflow: hidden;
-}
-.cv {
-  position: absolute;
-  object-fit: cover;
-  background: #000;
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity 0.2s;
-}
-.cv.show { opacity: 1; pointer-events: auto; }
-.cv-big { top: 0; left: 0; width: 100%; height: 100%; z-index: 1; border-radius: 0; border: 0; }
-.cv-small {
-  top: 14px;
-  right: 14px;
-  left: auto;
-  width: 96px;
-  height: 128px;
-  z-index: 3;
-  border-radius: 12px;
-  border: 2px solid #fff;
-  cursor: pointer;
-}
-#local-video { transform: scaleX(-1); }
-#call-info {
-  position: absolute;
-  top: 56px;
-  left: 0;
-  right: 0;
-  z-index: 2;
-  text-align: center;
-  color: white;
-  text-shadow: 0 1px 4px rgba(0,0,0,0.6);
-  pointer-events: none;
-}
-#call-name { font-size: 28px; font-weight: 600; }
-#call-status { font-size: 15px; margin-top: 6px; opacity: 0.8; }
-#call-avatar {
-  width: 110px;
-  height: 110px;
-  border-radius: 50%;
-  background: rgba(255,255,255,0.18);
-  color: white;
-  font-size: 48px;
-  font-weight: 600;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 1;
-}
-#call-controls {
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 36px;
-  display: flex;
-  justify-content: center;
-  gap: 18px;
-  z-index: 4;
-}
-#call-controls button {
-  width: 62px;
-  height: 62px;
-  border-radius: 50%;
-  border: none;
-  background: rgba(255,255,255,0.22);
-  color: white;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-#call-controls button .ic { width: 28px; height: 28px; }
-#call-controls button.active { background: #fff; color: #1b1b24; }
-#call-controls button.end { background: #ff3b30; color: #fff; }
-
-/* Call aane par poori screen (hara aur laal gol button) */
-#incoming-screen {
-  z-index: 40;
-  flex-direction: column;
-  justify-content: space-between;
-  align-items: center;
-  background: linear-gradient(180deg, #3a3a4c 0%, #101018 100%);
-  color: #fff;
-  padding: 70px 0 60px;
-}
-#inc-title { font-size: 15px; opacity: 0.75; text-align: center; }
-#inc-name { font-size: 32px; font-weight: 600; margin-top: 6px; text-align: center; padding: 0 16px; }
-#inc-avatar {
-  width: 120px;
-  height: 120px;
-  border-radius: 50%;
-  background: rgba(255,255,255,0.18);
-  font-size: 52px;
-  font-weight: 600;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-#inc-buttons { display: flex; justify-content: space-around; width: 100%; padding: 0 36px; }
-.round {
-  width: 68px;
-  height: 68px;
-  border-radius: 50%;
-  border: none;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  color: #fff;
-}
-.round .ic { width: 32px; height: 32px; }
-.round.red { background: #ff3b30; }
-.round.green { background: #34c759; }
-
-#toast {
-  display: none;
-  position: absolute;
-  bottom: 80px;
-  left: 50%;
-  transform: translateX(-50%);
-  background: rgba(0,0,0,0.8);
-  color: white;
-  padding: 8px 14px;
-  border-radius: 16px;
-  font-size: 13px;
-  z-index: 60;
-  max-width: 80%;
-  text-align: center;
-}
-</style>
-</head>
-<body>
-
-<!-- Saare icons ek jagah (SVG) -->
-<svg width="0" height="0" style="position:absolute" aria-hidden="true">
-  <defs>
-    <symbol id="i-phone" viewBox="0 0 24 24"><path d="M6.62 10.79c1.44 2.83 3.76 5.14 6.59 6.59l2.2-2.2c.27-.27.67-.36 1.02-.24 1.12.37 2.33.57 3.57.57.55 0 1 .45 1 1V20c0 .55-.45 1-1 1-9.39 0-17-7.61-17-17 0-.55.45-1 1-1h3.5c.55 0 1 .45 1 1 0 1.25.2 2.45.57 3.57.11.35.03.74-.25 1.02l-2.2 2.2z"/></symbol>
-    <symbol id="i-end" viewBox="0 0 24 24"><path d="M12 9c-1.6 0-3.15.25-4.6.72v3.1c0 .39-.23.74-.56.9-.98.49-1.87 1.12-2.66 1.85-.18.18-.43.28-.7.28-.28 0-.53-.11-.71-.29L.29 13.08c-.18-.17-.29-.42-.29-.7 0-.28.11-.53.29-.71C3.34 8.78 7.46 7 12 7s8.66 1.78 11.71 4.67c.18.18.29.43.29.71 0 .28-.11.53-.29.71l-2.48 2.48c-.18.18-.43.29-.71.29-.27 0-.52-.11-.7-.28-.79-.74-1.69-1.36-2.67-1.85-.33-.16-.56-.5-.56-.9v-3.1C15.15 9.25 13.6 9 12 9z"/></symbol>
-    <symbol id="i-mic" viewBox="0 0 24 24"><path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm5.3-3c0 3-2.54 5.1-5.3 5.1S6.7 14 6.7 11H5c0 3.41 2.72 6.23 6 6.72V21h2v-3.28c3.28-.48 6-3.3 6-6.72h-1.7z"/></symbol>
-    <symbol id="i-mic-off" viewBox="0 0 24 24"><use href="#i-mic"/><path d="M4 4L20 20" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" fill="none"/></symbol>
-    <symbol id="i-speaker" viewBox="0 0 24 24"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/></symbol>
-    <symbol id="i-video" viewBox="0 0 24 24"><path d="M17 10.5V7c0-.55-.45-1-1-1H4c-.55 0-1 .45-1 1v10c0 .55.45 1 1 1h12c.55 0 1-.45 1-1v-3.5l4 4v-11l-4 4z"/></symbol>
-    <symbol id="i-play" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></symbol>
-    <!-- Notes ka icon -->
-    <symbol id="i-note" viewBox="0 0 24 24"><path d="M14 2H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z"/></symbol>
-    <!-- History (ghadi) ka icon -->
-    <symbol id="i-history" viewBox="0 0 24 24"><path d="M13 3a9 9 0 0 0-9 9H1l3.89 3.89.07.14L9 12H6c0-3.87 3.13-7 7-7s7 3.13 7 7-3.13 7-7 7c-1.93 0-3.68-.79-4.94-2.06l-1.42 1.42A8.954 8.954 0 0 0 13 21a9 9 0 0 0 0-18zm-1 5v5l4.28 2.54.72-1.21-3.5-2.08V8H12z"/></symbol>
-    <!-- Photos (gallery) ka rangeen phool -->
-    <symbol id="i-photos" viewBox="0 0 24 24">
-      <ellipse cx="12" cy="6.6" rx="3" ry="4.6" fill="#f5584f" opacity=".85"/>
-      <ellipse cx="12" cy="6.6" rx="3" ry="4.6" fill="#ff9a2e" opacity=".85" transform="rotate(45 12 12)"/>
-      <ellipse cx="12" cy="6.6" rx="3" ry="4.6" fill="#ffd426" opacity=".85" transform="rotate(90 12 12)"/>
-      <ellipse cx="12" cy="6.6" rx="3" ry="4.6" fill="#7ed957" opacity=".85" transform="rotate(135 12 12)"/>
-      <ellipse cx="12" cy="6.6" rx="3" ry="4.6" fill="#2ec4a6" opacity=".85" transform="rotate(180 12 12)"/>
-      <ellipse cx="12" cy="6.6" rx="3" ry="4.6" fill="#3b9cff" opacity=".85" transform="rotate(225 12 12)"/>
-      <ellipse cx="12" cy="6.6" rx="3" ry="4.6" fill="#8e6bff" opacity=".85" transform="rotate(270 12 12)"/>
-      <ellipse cx="12" cy="6.6" rx="3" ry="4.6" fill="#ff5fa8" opacity=".85" transform="rotate(315 12 12)"/>
-    </symbol>
-  </defs>
-</svg>
-
-<div id="join-screen">
-  <h1>Join Chat</h1>
-  <input type="text" id="name-input" placeholder="Your Name">
-  <input type="text" id="room-input" placeholder="Room Code">
-  <button onclick="joinRoom()">Join Room</button>
-</div>
-
-<div id="chat-screen">
-  <div id="chat-header">
-    <span id="room-title">Room: <span id="room-label"></span></span>
-    <span id="header-actions">
-      <button id="call-btn" class="hdr-btn" onclick="startCall(false)" title="Call"><svg class="ic"><use href="#i-phone"/></svg></button>
-      <button id="perm-btn">&#128204; Make permanent</button>
-      <button id="heart-btn">&#10084;&#65039;</button>
-    </span>
-  </div>
-
-  <!-- Normal chat -->
-  <div id="messages"></div>
-  <div id="typing-indicator" class="typing-line"></div>
-  <div id="reply-preview" class="reply-preview">
-    <div class="rp-text" id="rp-text"></div>
-    <button onclick="cancelReply()">&#10006;</button>
-  </div>
-  <div id="input-area" class="input-row">
-    <label for="media-input">&#128206;</label>
-    <input type="file" id="media-input" accept="image/*,video/*">
-    <input type="text" id="msg-input" placeholder="Type a message">
-    <button onclick="sendMessage()">&#10148;</button>
-  </div>
-
-  <!-- Password box -->
-  <div id="modal" class="overlay">
-    <div class="modal-box">
-      <h3 id="modal-title"></h3>
-      <p id="modal-note"></p>
-      <input type="password" id="modal-pass" placeholder="Password">
-      <input type="password" id="modal-pass2" placeholder="Password dobara likho">
-      <div id="modal-error"></div>
-      <div class="modal-actions">
-        <button id="modal-cancel">Cancel</button>
-        <button id="modal-ok">OK</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- Secret chat (apna alag chat, hamesha save hota hai) -->
-  <div id="history-panel" class="overlay">
-    <div class="secret-box">
-      <div class="secret-head">
-        <span>&#10084;&#65039; Secret chat</span>
-        <span class="secret-actions">
-          <button id="notes-btn" onclick="openNotes()" title="Notes"><svg class="ic"><use href="#i-note"/></svg><span id="notes-dot"></span></button>
-          <button class="app-ic" onclick="openMedia()" title="Media"><svg class="ic"><use href="#i-photos"/></svg></button>
-          <button onclick="startCall(true)" title="Call"><svg class="ic"><use href="#i-phone"/></svg></button>
-          <button onclick="closeHistory()">&#10006;</button>
-        </span>
-      </div>
-      <div id="history-list"></div>
-      <div id="secret-typing-indicator" class="typing-line"></div>
-      <div id="secret-reply-preview" class="reply-preview">
-        <div class="rp-text" id="secret-rp-text"></div>
-        <button onclick="cancelSecretReply()">&#10006;</button>
-      </div>
-      <div class="input-row">
-        <label for="secret-media-input">&#128206;</label>
-        <input type="file" id="secret-media-input" accept="image/*,video/*">
-        <input type="text" id="secret-msg-input" placeholder="Secret message">
-        <button onclick="sendSecretMessage()">&#10148;</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- Secret media ki list -->
-  <div id="media-panel" class="overlay">
-    <div class="secret-box">
-      <div class="secret-head">
-        <span>Secret media</span>
-        <button onclick="closeMedia()">&#10006;</button>
-      </div>
-      <div id="media-grid"></div>
-    </div>
-  </div>
-
-  <!-- Notes + points (secret chat) -->
-  <div id="notes-panel" class="overlay">
-    <div class="secret-box">
-      <div class="secret-head">
-        <span>Notes</span>
-        <button onclick="closeNotes()">&#10006;</button>
-      </div>
-      <div id="notes-body">
-        <div class="nsec-title">Points</div>
-        <div id="points-row"></div>
-        <div class="nsec-title">Approval ke liye ruki requests</div>
-        <div id="pending-list"></div>
-        <div class="nsec-title">Notes</div>
-        <div class="input-row note-add">
-          <input type="text" id="note-input" placeholder="Naya note likho" maxlength="1000">
-          <button onclick="sendNote()">&#10148;</button>
-        </div>
-        <div id="notes-list"></div>
-      </div>
-    </div>
-  </div>
-
-  <!-- Point badhane / ghatane se pehle reason likhne ka box -->
-  <div id="reason-panel" class="overlay">
-    <div class="modal-box">
-      <h3 id="reason-title"></h3>
-      <p>Reason likhna zaroori hai. Dusre ke approve karne par hi point badlega.</p>
-      <input type="text" id="reason-input" maxlength="300" placeholder="Reason">
-      <div id="reason-error"></div>
-      <div class="modal-actions">
-        <button id="reason-cancel">Cancel</button>
-        <button id="reason-ok">Send</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- Ek user ke points ki history -->
-  <div id="phist-panel" class="overlay">
-    <div class="secret-box">
-      <div class="secret-head">
-        <span id="phist-title">History</span>
-        <button onclick="closePointHistory()">&#10006;</button>
-      </div>
-      <div id="phist-list"></div>
-    </div>
-  </div>
-
-  <!-- Call screen -->
-  <div id="call-screen" class="overlay">
-    <video id="remote-video" class="cv cv-big" autoplay playsinline></video>
-    <video id="local-video" class="cv cv-small" autoplay playsinline muted></video>
-    <div id="call-info">
-      <div id="call-name"></div>
-      <div id="call-status"></div>
-    </div>
-    <div id="call-avatar"></div>
-    <div id="call-controls">
-      <button id="mute-btn" onclick="toggleMute()" title="Mute"><svg class="ic"><use href="#i-mic"/></svg></button>
-      <button id="speaker-btn" onclick="toggleSpeaker()" title="Speaker"><svg class="ic"><use href="#i-speaker"/></svg></button>
-      <button id="video-btn" onclick="toggleVideo()" title="Video"><svg class="ic"><use href="#i-video"/></svg></button>
-      <button id="end-btn" class="end" onclick="hangUp()" title="Cut"><svg class="ic"><use href="#i-end"/></svg></button>
-    </div>
-  </div>
-
-  <!-- Call / video aane par poori screen -->
-  <div id="incoming-screen" class="overlay">
-    <div>
-      <div id="inc-title"></div>
-      <div id="inc-name"></div>
-    </div>
-    <div id="inc-avatar"></div>
-    <div id="inc-buttons">
-      <button id="inc-no" class="round red"><svg class="ic"><use href="#i-end"/></svg></button>
-      <button id="inc-ok" class="round green"><svg class="ic"><use id="inc-ok-icon" href="#i-phone"/></svg></button>
-    </div>
-  </div>
-
-  <div id="toast"></div>
-</div>
-
-<script src="/socket.io/socket.io.js"></script>
-<script>
-const socket = io();
-
-// Page ke important elements (sabse upar taaki neeche ke code mein kaam aayein)
-const messagesBox = document.getElementById('messages');
-const historyList = document.getElementById('history-list');
-const historyPanel = document.getElementById('history-panel');
-const msgInput = document.getElementById('msg-input');
-const secretMsgInput = document.getElementById('secret-msg-input');
-const typingLine = document.getElementById('typing-indicator');
-const secretTypingLine = document.getElementById('secret-typing-indicator');
-
-// Server ke saath same: ek baar mein kitne secret messages aate hain
+// Secret chat mein ek baar mein kitne messages / media laane hain
 const HISTORY_PAGE = 100;
+const MEDIA_PAGE = 60;
 
-let myName = "";
-let myRoom = "";
-let joined = false;
-let replyingTo = null;
-let secretReplyingTo = null;
-let typingTimeout = null;
-let isTyping = false;
-let secretTypingTimeout = null;
-let secretIsTyping = false;
-const typingUsers = new Set();
-const secretTypingUsers = new Set();
+// Notes aur points (secret chat) ki limits
+const NOTES_LIMIT = 200;         // notes kholne par aakhri itne notes dikhte hain (baaki bhi save rehte hain)
+const POINT_HISTORY_LIMIT = 200; // ek user ki history mein aakhri itni requests
+const MAX_NOTE_LENGTH = 1000;
+const MAX_REASON_LENGTH = 300;
 
-/* Jo messages network na hone ki wajah se ruke hue hain (sirf page khula rehne tak) */
-const pending = [];        // normal chat
-const pendingSecret = [];  // secret chat
-let pendingCounter = 0;
-
-/* Dobara jodne ke liye */
-let hadConnected = false;
-let awaitingRejoin = false;
-let awaitingSecret = false;
-let secretPass = '';   // sirf memory mein, refresh karte hi hat jata hai
-let triedPass = '';
-
-/* Secret chat mein upar scroll karne par purane messages */
-let historyHasMore = false;
-let historyLoadingMore = false;
-let historyOldestTs = null;
-
-function secretIsOpen() {
-  return historyPanel.style.display === 'flex';
+// ---------- Firebase setup ----------
+let db = null;
+if (
+  process.env.FIREBASE_PROJECT_ID &&
+  process.env.FIREBASE_CLIENT_EMAIL &&
+  process.env.FIREBASE_PRIVATE_KEY
+) {
+  try {
+    admin.initializeApp({
+      credential: admin.credential.cert({
+        projectId: process.env.FIREBASE_PROJECT_ID,
+        clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
+        privateKey: process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n')
+      })
+    });
+    db = admin.firestore();
+    db.settings({ ignoreUndefinedProperties: true });
+    console.log('Firebase connected');
+  } catch (err) {
+    console.error('Firebase setup failed:', err.message);
+  }
+} else {
+  console.log('Firebase env variables missing - permanent rooms disabled');
 }
 
-function joinRoom() {
-  const name = document.getElementById('name-input').value.trim();
-  const room = document.getElementById('room-input').value.trim();
-  if (!name || !room) return alert("Please enter name and room code");
-  myName = name;
-  myRoom = room;
-  joined = true;
-  socket.emit('join-room', { name, roomCode: room });
-  document.getElementById('join-screen').style.display = 'none';
-  document.getElementById('chat-screen').style.display = 'flex';
-  document.getElementById('room-label').innerText = room;
+// ---------- Backblaze B2 setup (permanent media) ----------
+let s3 = null;
+const B2_BUCKET = process.env.B2_BUCKET;
+if (
+  process.env.B2_KEY_ID &&
+  process.env.B2_APPLICATION_KEY &&
+  process.env.B2_ENDPOINT &&
+  B2_BUCKET
+) {
+  try {
+    const endpoint = process.env.B2_ENDPOINT.replace(/^https?:\/\//, '').replace(/\/+$/, '');
+    const region = endpoint.split('.')[1];
+    s3 = new S3Client({
+      endpoint: 'https://' + endpoint,
+      region,
+      credentials: {
+        accessKeyId: process.env.B2_KEY_ID,
+        secretAccessKey: process.env.B2_APPLICATION_KEY
+      },
+      forcePathStyle: true,
+      requestChecksumCalculation: 'WHEN_REQUIRED',
+      responseChecksumValidation: 'WHEN_REQUIRED'
+    });
+    console.log('Backblaze B2 connected');
+  } catch (err) {
+    console.error('B2 setup failed:', err.message);
+  }
+} else {
+  console.log('B2 env variables missing - media will be saved on server (temporary)');
 }
 
-/* ---------- Network toot-ne par apne aap dobara jodna ---------- */
-socket.on('connect', () => {
-  if (!hadConnected) { hadConnected = true; return; } // pehli baar ka connect, kuch nahi karna
-  if (!joined) return;
+// ---------- Upload setup ----------
+const uploadDir = path.join(__dirname, 'public', 'uploads');
+if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
 
-  typingUsers.clear();
-  secretTypingUsers.clear();
-  renderTyping(typingLine, typingUsers);
-  renderTyping(secretTypingLine, secretTypingUsers);
+const upload = multer({ dest: uploadDir, limits: { fileSize: 100 * 1024 * 1024 } });
 
-  // Room mein wapas judo (rejoin: true taaki "joined" ka message dobara na aaye)
-  awaitingRejoin = true;
-  socket.emit('join-room', { name: myName, roomCode: myRoom, rejoin: true });
+app.use(express.json({ limit: '10kb' }));
+app.use(express.static(path.join(__dirname, 'public')));
 
-  // Agar secret chat khuli thi to use bhi apne aap unlock karo
-  if (secretIsOpen() && secretPass) {
-    awaitingSecret = true;
-    socket.emit('unlock-history', { password: secretPass, rejoin: true });
+// Seedha upload: phone ko B2 mein file bhejne ka chhota temporary link do.
+// File server se nahi guzarti, isliye Render ka data nahi lagta.
+app.post('/presign-upload', async (req, res) => {
+  if (!s3) return res.status(503).json({ error: 'B2 not configured' });
+
+  const { type, name, secret } = req.body || {};
+  if (typeof type !== 'string' || !/^(image|video)\/[a-zA-Z0-9.+-]+$/.test(type)) {
+    return res.status(400).json({ error: 'Bad type' });
   }
 
-  // Agar server ka jawab na aaye to bhi ruke hue messages bhej do
-  setTimeout(() => { if (awaitingRejoin) flushPending(); }, 2500);
+  try {
+    const ext = path
+      .extname(typeof name === 'string' ? name : '')
+      .toLowerCase()
+      .replace(/[^a-z0-9.]/g, '')
+      .slice(0, 10);
+    const key = (secret === true ? 'secret-' : 'normal-') + makeId() + ext;
+
+    const uploadUrl = await getSignedUrl(
+      s3,
+      new PutObjectCommand({ Bucket: B2_BUCKET, Key: key, ContentType: type }),
+      { expiresIn: 600 }
+    );
+
+    res.json({ uploadUrl, url: '/media/' + key, key, type });
+  } catch (err) {
+    console.error('Presign failed:', err.message);
+    res.status(500).json({ error: 'Presign failed' });
+  }
 });
 
-socket.on('disconnect', (reason) => {
-  typingUsers.clear();
-  secretTypingUsers.clear();
-  renderTyping(typingLine, typingUsers);
-  renderTyping(secretTypingLine, secretTypingUsers);
-  isTyping = false;
-  secretIsTyping = false;
-  // Call chal rahi thi to network jaate hi khatam
-  if (callState !== 'idle') cleanupCall('Network toot gaya, call khatam');
-  // Agar server ne khud kaata hai to browser apne aap try nahi karta, hum karenge
-  if (reason === 'io server disconnect') socket.connect();
+// Purana tareeka (sirf backup ke liye): file server se hokar B2 jati hai
+app.post('/upload', upload.single('file'), async (req, res) => {
+  if (!req.file) return res.status(400).json({ error: 'No file' });
+
+  // B2 set nahi hai to purana tareeka (server par temporary)
+  if (!s3) {
+    return res.json({
+      url: '/uploads/' + req.file.filename,
+      type: req.file.mimetype
+    });
+  }
+
+  try {
+    const ext = path
+      .extname(req.file.originalname || '')
+      .toLowerCase()
+      .replace(/[^a-z0-9.]/g, '')
+      .slice(0, 10);
+    const key = (req.query.secret === '1' ? 'secret-' : 'normal-') + makeId() + ext;
+
+    await s3.send(
+      new PutObjectCommand({
+        Bucket: B2_BUCKET,
+        Key: key,
+        Body: fs.createReadStream(req.file.path),
+        ContentLength: req.file.size,
+        ContentType: req.file.mimetype
+      })
+    );
+
+    res.json({ url: '/media/' + key, type: req.file.mimetype });
+  } catch (err) {
+    console.error('B2 upload failed:', err.message);
+    res.status(500).json({ error: 'Upload failed' });
+  } finally {
+    fs.unlink(req.file.path, () => {});
+  }
 });
 
-window.addEventListener('online', () => {
-  if (joined && !socket.connected) socket.connect();
-});
-document.addEventListener('visibilitychange', () => {
-  if (!document.hidden && joined && !socket.connected) socket.connect();
+// B2 ki private file dikhane ke liye: ek ghante ka temporary link bana ke wahan bhej do.
+// Asli file seedha B2 se aati hai, Render se nahi.
+app.get('/media/:key', async (req, res) => {
+  if (!s3) return res.status(404).end();
+  const key = req.params.key;
+  if (!/^[a-zA-Z0-9._-]+$/.test(key)) return res.status(400).end();
+  try {
+    const url = await getSignedUrl(
+      s3,
+      new GetObjectCommand({ Bucket: B2_BUCKET, Key: key }),
+      { expiresIn: 3600 }
+    );
+    res.set('Cache-Control', 'private, max-age=3000');
+    res.redirect(url);
+  } catch (err) {
+    console.error('Media link failed:', err.message);
+    res.status(500).end();
+  }
 });
 
-function flushPending() {
-  awaitingRejoin = false;
-  if (!socket.connected) return;
-  while (pending.length) {
-    const p = pending.shift();
-    p.el.remove();
-    socket.emit(p.event, p.payload);
+// Call ke liye STUN (aur chaho to TURN) servers
+app.get('/ice-config', (req, res) => {
+  const iceServers = [
+    { urls: 'stun:stun.l.google.com:19302' },
+    { urls: 'stun:stun1.l.google.com:19302' }
+  ];
+  if (process.env.TURN_URL && process.env.TURN_USERNAME && process.env.TURN_CREDENTIAL) {
+    iceServers.push({
+      urls: process.env.TURN_URL.split(','),
+      username: process.env.TURN_USERNAME,
+      credential: process.env.TURN_CREDENTIAL
+    });
+  }
+  res.json({ iceServers });
+});
+
+// ---------- Helpers ----------
+function makeId() {
+  return Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+}
+
+function roomRef(roomCode) {
+  return db.collection('rooms').doc(encodeURIComponent(roomCode));
+}
+
+function hashPassword(password, salt) {
+  return crypto.scryptSync(password, salt, 64).toString('hex');
+}
+
+function checkPassword(password, salt, savedHash) {
+  const a = Buffer.from(hashPassword(password, salt), 'hex');
+  const b = Buffer.from(savedHash, 'hex');
+  return a.length === b.length && crypto.timingSafeEqual(a, b);
+}
+
+// Kaun si rooms permanent hain (baar baar database na dekhna pade)
+const permanentRooms = new Map();
+
+async function isPermanent(roomCode) {
+  if (!db) return false;
+  if (permanentRooms.has(roomCode)) return permanentRooms.get(roomCode);
+  const snap = await roomRef(roomCode).get();
+  const value = snap.exists && snap.data().permanent === true;
+  permanentRooms.set(roomCode, value);
+  return value;
+}
+
+async function saveSecretMessage(roomCode, msg) {
+  if (!db) return;
+  try {
+    await roomRef(roomCode).collection('secretMessages').doc(msg.id).set(msg);
+  } catch (err) {
+    console.error('Secret message save failed:', err.message);
   }
 }
 
-function flushSecretPending() {
-  awaitingSecret = false;
-  if (!socket.connected) return;
-  while (pendingSecret.length) {
-    const p = pendingSecret.shift();
-    p.el.remove();
-    socket.emit(p.event, p.payload);
+// Secret chat ki saari media ki alag list (media button ke liye)
+async function saveSecretMedia(roomCode, msg) {
+  if (!db) return;
+  try {
+    await roomRef(roomCode).collection('secretMedia').doc(msg.id).set({
+      id: msg.id,
+      name: msg.name,
+      url: msg.url,
+      type: msg.type,
+      ts: msg.ts
+    });
+  } catch (err) {
+    console.error('Secret media save failed:', err.message);
   }
 }
 
-// Network nahi hai to message ghadi ke nishan ke saath screen par ruka rehta hai
-function queueMessage(isSecret, event, payload) {
-  const id = 'pending-' + (++pendingCounter);
-  let el;
-  if (event.indexOf('media') !== -1) {
-    el = buildMediaItem(id, myName, payload.url, payload.type, true, payload.replyTo, null);
-    const dl = el.querySelector('a[download]');
-    if (dl) dl.remove();
-  } else {
-    el = buildTextItem(id, myName, payload.message, true, payload.replyTo, null, false);
-  }
-  el._editable = false;
-  el._reply = null;
-  el.classList.add('pending');
-  const clock = document.createElement('span');
-  clock.className = 'clock';
-  clock.innerText = '\uD83D\uDD53';
-  el.querySelector('.bubble').appendChild(clock);
-
-  (isSecret ? pendingSecret : pending).push({ event, payload, el });
-  const box = isSecret ? historyList : messagesBox;
-  box.appendChild(el);
-  box.scrollTop = box.scrollHeight;
-}
-
-function sendOrQueue(isSecret, event, payload) {
-  if (socket.connected) socket.emit(event, payload);
-  else queueMessage(isSecret, event, payload);
-}
-
-function sendMessage() {
-  const input = msgInput;
-  if (trySubmitEdit(input)) return;
-  const text = input.value.trim();
-  if (!text) return;
-  sendOrQueue(false, 'chat-message', { message: text, replyTo: replyingTo });
-  input.value = '';
-  cancelReply();
-  stopTyping();
-}
-
-/* ---------- Typing indicator (sada text, normal chat) ---------- */
-function renderTyping(el, set) {
-  const names = Array.from(set);
-  if (names.length === 0) el.innerText = '';
-  else el.innerText = names.join(', ') + (names.length > 1 ? ' are typing...' : ' is typing...');
-}
-
-function updateTypingText() {
-  renderTyping(typingLine, typingUsers);
-}
-
-msgInput.addEventListener('input', () => {
-  if (!isTyping && socket.connected) { isTyping = true; socket.emit('typing'); }
-  clearTimeout(typingTimeout);
-  typingTimeout = setTimeout(stopTyping, 1500);
-});
-
-function stopTyping() {
-  clearTimeout(typingTimeout);
-  if (isTyping) {
-    isTyping = false;
-    if (socket.connected) socket.emit('stop-typing');
+// Sirf un sockets ko bhejo jo isi room mein secret chat unlock kar chuke hain
+function emitToUnlocked(roomCode, event, payload, exceptSocket) {
+  for (const [, s] of io.sockets.sockets) {
+    if (exceptSocket && s.id === exceptSocket.id) continue;
+    if (s.data.roomCode === roomCode && s.data.unlocked) {
+      s.emit(event, payload);
+    }
   }
 }
 
-socket.on('typing', ({ name }) => { typingUsers.add(name); updateTypingText(); });
-socket.on('stop-typing', ({ name }) => { typingUsers.delete(name); updateTypingText(); });
+// ---------- Notes + points (secret chat) ----------
+// Har user ka points wala dibba database mein: rooms/<room>/secretPoints/u-<naam>
+function pointUserRef(roomCode, name) {
+  return roomRef(roomCode).collection('secretPoints').doc('u-' + encodeURIComponent(name).slice(0, 400));
+}
 
-/* ---------- Typing indicator (secret chat) ---------- */
-secretMsgInput.addEventListener('input', () => {
-  if (!secretIsTyping && socket.connected) { secretIsTyping = true; socket.emit('secret-typing'); }
-  clearTimeout(secretTypingTimeout);
-  secretTypingTimeout = setTimeout(stopSecretTyping, 1500);
-});
+// Jis user ka dibba pehle se ban chuka hai uska baar baar database na dekhna pade
+const knownPointUsers = new Set();
 
-function stopSecretTyping() {
-  clearTimeout(secretTypingTimeout);
-  if (secretIsTyping) {
-    secretIsTyping = false;
-    if (socket.connected) socket.emit('secret-stop-typing');
+// Jab koi secret chat unlock kare to uska points wala dibba ban jata hai (0 point se)
+async function ensurePointUser(roomCode, name) {
+  if (!db || !roomCode || !name) return;
+  const key = roomCode + '|' + name;
+  if (knownPointUsers.has(key)) return;
+  try {
+    const ref = pointUserRef(roomCode, name);
+    const snap = await ref.get();
+    if (!snap.exists) {
+      await ref.set({ name, points: 0 });
+      emitToUnlocked(roomCode, 'point-user', { name, points: 0 });
+    }
+    knownPointUsers.add(key);
+  } catch (err) {
+    console.error('Point user setup failed:', err.message);
   }
 }
 
-socket.on('secret-typing', ({ name }) => {
-  secretTypingUsers.add(name);
-  renderTyping(secretTypingLine, secretTypingUsers);
-});
-socket.on('secret-stop-typing', ({ name }) => {
-  secretTypingUsers.delete(name);
-  renderTyping(secretTypingLine, secretTypingUsers);
-});
-
-/* ---------- Reply (normal chat) ---------- */
-function startReply(id, name, preview) {
-  replyingTo = { id, name, preview };
-  document.getElementById('rp-text').innerText = 'Replying to ' + name + ': ' + preview;
-  document.getElementById('reply-preview').style.display = 'flex';
-  msgInput.focus();
+// Notes button ke laal nishan ke liye: dusron ki kitni requests mere approval ke liye ruki hain
+async function sendNotesBadge(socket) {
+  const { roomCode, name } = socket.data;
+  if (!db || !roomCode) return;
+  try {
+    const snap = await roomRef(roomCode)
+      .collection('pointRequests')
+      .where('status', '==', 'pending')
+      .get();
+    const count = snap.docs.filter((d) => d.data().from !== name).length;
+    socket.emit('notes-badge', { count });
+  } catch (err) {
+    console.error('Notes badge failed:', err.message);
+  }
 }
 
-function cancelReply() {
-  replyingTo = null;
-  document.getElementById('reply-preview').style.display = 'none';
+// Normal chat ke text messages kisne bheje (edit ke time check karne ke liye).
+// Ye sirf server ki memory mein rehta hai, database mein nahi jata.
+const normalMessageOwners = new Map();
+const MAX_TRACKED_MESSAGES = 5000;
+const MAX_MESSAGE_LENGTH = 2000;
+
+function trackNormalMessage(id, roomCode, name) {
+  normalMessageOwners.set(id, { roomCode, name });
+  if (normalMessageOwners.size > MAX_TRACKED_MESSAGES) {
+    const oldestKey = normalMessageOwners.keys().next().value;
+    normalMessageOwners.delete(oldestKey);
+  }
 }
 
-function scrollToMessage(id) {
-  const el = document.querySelector('[data-id="' + id + '"]');
-  if (!el) return;
-  el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-  el.classList.add('highlight');
-  setTimeout(() => el.classList.remove('highlight'), 1500);
+// "left the room" ka message thodi der ruk kar jata hai, taaki network ke chhote
+// jhatke par (jahan banda turant wapas judta hai) bekaar ke joined/left message na aayein
+const LEAVE_GRACE_MS = 8000;
+const leaveTimers = new Map();   // key -> timer (left message abhi bheja nahi)
+const leftAnnounced = new Set(); // key -> left message ja chuka hai
+
+function leaveKey(roomCode, name) {
+  return roomCode + '|' + name;
 }
 
-function buildQuotedHtml(replyTo) {
-  if (!replyTo) return '';
-  return '<div class="quoted" onclick="scrollToMessage(\'' + replyTo.id + '\')">' +
-    '<div class="q-name">' + escapeHtml(replyTo.name) + '</div>' +
-    '<div>' + escapeHtml(replyTo.preview) + '</div></div>';
+// ---------- Call helpers ----------
+// Call ke signal sirf isi room ke bande ko jayein (secret call mein dono unlocked hone chahiye)
+function callTarget(socket, targetId) {
+  if (typeof targetId !== 'string') return null;
+  const target = io.sockets.sockets.get(targetId);
+  if (!target || !socket.data.roomCode || target.data.roomCode !== socket.data.roomCode) return null;
+  const secret = socket.data.callSecret || target.data.callSecret;
+  if (secret && !(socket.data.unlocked && target.data.unlocked)) return null;
+  return target;
 }
 
-/* ---------- Swipe to reply (normal aur secret dono chat ke liye) ---------- */
-let suppressTapUntil = 0; // swipe/hold ke baad galti se double-tap na ginna
+function endCall(socket) {
+  const peerId = socket.data.callPeer;
+  socket.data.callPeer = null;
+  socket.data.callSecret = false;
+  if (!peerId) return;
+  const peer = io.sockets.sockets.get(peerId);
+  if (peer) {
+    peer.data.callPeer = null;
+    peer.data.callSecret = false;
+    peer.emit('call-ended', { from: socket.id });
+  }
+}
 
-function attachSwipe(container, onTrigger) {
-  const SWIPE_TRIGGER = 40;
-  const SWIPE_MAX = 56;
-  let sw = null;
+// Room ke baaki logon ko (secret call ho to sirf unlocked ko) event bhejo
+function emitToOthersForCall(socket, isSecret, event, payload) {
+  const { roomCode } = socket.data;
+  for (const [, s] of io.sockets.sockets) {
+    if (s.id === socket.id || s.data.roomCode !== roomCode) continue;
+    if (isSecret && !s.data.unlocked) continue;
+    s.emit(event, payload);
+  }
+}
 
-  container.addEventListener('pointerdown', (e) => {
-    const el = e.target.closest('.msg');
-    if (!el || !el._reply) return;
-    if (e.target.closest('a, video, button')) return;
-    sw = { el, id: e.pointerId, startX: e.clientX, startY: e.clientY, dx: 0, active: false };
+// ---------- Sockets ----------
+io.on('connection', (socket) => {
+  socket.data.failedAttempts = 0;
+  socket.data.lockUntil = 0;
+  socket.data.unlocked = false; // secret chat ka access mila hai ya nahi
+  socket.data.callPeer = null;
+  socket.data.callSecret = false;
+
+  socket.on('join-room', async ({ name, roomCode, rejoin }) => {
+    socket.join(roomCode);
+    socket.data.name = name;
+    socket.data.roomCode = roomCode;
+    socket.data.unlocked = false;
+
+    // Joined message sirf tab jab sach mein naya banda aaya ho (network jhatke par dobara judna nahi)
+    const key = leaveKey(roomCode, name);
+    let announce = !rejoin;
+    const timer = leaveTimers.get(key);
+    if (timer) {
+      clearTimeout(timer);
+      leaveTimers.delete(key);
+      // Page refresh karke aaya hai to pehle "left" dikha do
+      if (!rejoin) io.to(roomCode).emit('system-message', `${name} left the room`);
+    }
+    // Agar "left" message pehle hi ja chuka tha to ab "joined" dikhana sahi hai
+    if (leftAnnounced.delete(key)) announce = true;
+    if (announce) io.to(roomCode).emit('system-message', `${name} joined the room`);
+
+    try {
+      socket.emit('room-info', { permanent: await isPermanent(roomCode) });
+    } catch (err) {
+      console.error('Room check failed:', err.message);
+      socket.emit('room-info', { permanent: false });
+    }
   });
 
-  window.addEventListener('pointermove', (e) => {
-    if (!sw || e.pointerId !== sw.id) return;
-    const dx = e.clientX - sw.startX;
-    const dy = e.clientY - sw.startY;
-
-    if (!sw.active) {
-      // Upar-neeche scroll ho raha hai to swipe cancel
-      if (Math.abs(dy) > 10 && Math.abs(dy) > Math.abs(dx)) { sw = null; return; }
-      if (dx > 10 && dx > Math.abs(dy)) {
-        sw.active = true;
-        document.body.classList.add('swiping');
-      } else {
-        return;
+  // Room ko permanent banana (password ke saath)
+  socket.on('make-permanent', async ({ password }) => {
+    const { roomCode } = socket.data;
+    if (!roomCode) return;
+    if (!db) return socket.emit('permanent-error', 'Permanent room abhi available nahi hai');
+    if (typeof password !== 'string' || password.length < 4) {
+      return socket.emit('permanent-error', 'Password kam se kam 4 characters ka rakho');
+    }
+    try {
+      if (await isPermanent(roomCode)) {
+        return socket.emit('permanent-error', 'Ye room pehle se permanent hai');
       }
-    }
-
-    const move = Math.max(0, Math.min(dx, SWIPE_MAX));
-    sw.dx = dx;
-    sw.el.style.transition = 'none';
-    sw.el.style.transform = 'translateX(' + move + 'px)';
-    sw.el.style.setProperty('--swipe', Math.min(1, move / SWIPE_TRIGGER));
-    sw.el.classList.toggle('swipe-ready', dx >= SWIPE_TRIGGER);
-  });
-
-  function endSwipe(e) {
-    if (!sw || e.pointerId !== sw.id) return;
-    const s = sw;
-    sw = null;
-    document.body.classList.remove('swiping');
-    s.el.style.transition = 'transform 0.2s';
-    s.el.style.transform = '';
-    s.el.style.setProperty('--swipe', 0);
-    s.el.classList.remove('swipe-ready');
-    if (s.active) suppressTapUntil = Date.now() + 500;
-    if (s.active && s.dx >= SWIPE_TRIGGER) onTrigger(s.el._reply);
-  }
-  window.addEventListener('pointerup', endSwipe);
-  window.addEventListener('pointercancel', endSwipe);
-}
-
-attachSwipe(messagesBox, (r) => startReply(r.id, r.name, r.preview));
-attachSwipe(historyList, (r) => startSecretReply(r));
-
-/* ---------- Double tap se dil (normal aur secret dono chat) ---------- */
-let lastTap = { el: null, t: 0 };
-
-function attachDoubleTap(container) {
-  container.addEventListener('click', (e) => {
-    if (Date.now() < suppressTapUntil) return;
-    if (e.target.closest('a, video, button, .quoted, .media-box')) return;
-    const el = e.target.closest('.msg');
-    if (!el) return;
-    const now = Date.now();
-    if (lastTap.el === el && now - lastTap.t < 350) {
-      lastTap = { el: null, t: 0 };
-      toggleHeart(container, el);
-    } else {
-      lastTap = { el: el, t: now };
-    }
-  });
-}
-attachDoubleTap(messagesBox);
-attachDoubleTap(historyList);
-
-function toggleHeart(container, el) {
-  const id = el.getAttribute('data-id');
-  if (!id || id.indexOf('pending-') === 0 || !socket.connected) return;
-  const isSecret = container === historyList;
-  const on = !(el._hearts && el._hearts.has(myName));
-  socket.emit(isSecret ? 'secret-heart' : 'heart', { id: id, on: on });
-}
-
-function renderHearts(el) {
-  let h = el.querySelector('.hearts');
-  const n = el._hearts ? el._hearts.size : 0;
-  if (!n) { if (h) h.remove(); return; }
-  if (!h) {
-    h = document.createElement('div');
-    h.className = 'hearts';
-    el.appendChild(h);
-  }
-  h.innerText = '\u2764\uFE0F' + (n > 1 ? ' ' + n : '');
-}
-
-function applyHeart(container, id, name, on) {
-  const el = container.querySelector('[data-id="' + id + '"]');
-  if (!el) return;
-  if (!el._hearts) el._hearts = new Set();
-  if (on) el._hearts.add(name); else el._hearts.delete(name);
-  renderHearts(el);
-}
-
-socket.on('heart', ({ id, name, on }) => applyHeart(messagesBox, id, name, on));
-socket.on('secret-heart', ({ id, name, on }) => applyHeart(historyList, id, name, on));
-
-/* ---------- Media upload: seedha phone se Backblaze (Render se nahi guzarti) ---------- */
-async function uploadFile(file, isSecret) {
-  if (file.size > 100 * 1024 * 1024) throw new Error('too-big');
-  toast('Uploading...');
-
-  try {
-    // 1) server se chhota upload-link lo
-    const pres = await fetch('/presign-upload', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ type: file.type, name: file.name, secret: isSecret })
-    });
-    if (!pres.ok) throw new Error('presign');
-    const p = await pres.json();
-
-    // 2) file seedha Backblaze ko bhejo
-    const put = await fetch(p.uploadUrl, {
-      method: 'PUT',
-      headers: { 'Content-Type': file.type },
-      body: file
-    });
-    if (!put.ok) throw new Error('put');
-
-    return { url: p.url, type: file.type };
-  } catch (err) {
-    // Seedha upload na chale to purane tareeke se (server se hokar) bhej do
-    console.warn('Direct upload failed, using server:', err);
-    toast('Seedha upload nahi chala, server se bhej raha hoon');
-    const formData = new FormData();
-    formData.append('file', file);
-    const res = await fetch('/upload' + (isSecret ? '?secret=1' : ''), { method: 'POST', body: formData });
-    const result = await res.json();
-    if (!result.url) throw new Error('upload');
-    return result;
-  }
-}
-
-function uploadErrorText(err) {
-  return err && err.message === 'too-big'
-    ? 'File bahut badi hai, 100 MB se chhoti rakho'
-    : 'Upload failed, please try again';
-}
-
-msgInput.addEventListener('keypress', (e) => {
-  if (e.key === 'Enter') sendMessage();
-});
-
-document.getElementById('media-input').addEventListener('change', async (e) => {
-  const file = e.target.files[0];
-  if (!file) return;
-
-  try {
-    const result = await uploadFile(file, false);
-    sendOrQueue(false, 'media-message', { url: result.url, type: result.type, replyTo: replyingTo });
-    cancelReply();
-  } catch (err) {
-    alert(uploadErrorText(err));
-  }
-  e.target.value = '';
-});
-
-/* ---------- Incoming messages (normal chat) ---------- */
-socket.on('chat-message', ({ id, name, message, replyTo }) => {
-  typingUsers.delete(name);
-  updateTypingText();
-  addTextMessage(id, name, message, name === myName, replyTo);
-});
-
-socket.on('media-message', ({ id, name, url, type, replyTo }) => {
-  typingUsers.delete(name);
-  updateTypingText();
-  addMediaMessage(id, name, url, type, name === myName, replyTo);
-});
-
-socket.on('system-message', (text) => {
-  const div = document.createElement('div');
-  div.className = 'system-msg';
-  div.innerText = text;
-  messagesBox.appendChild(div);
-  scrollDown();
-});
-
-function addTextMessage(id, name, text, mine, replyTo) {
-  const wrap = buildTextItem(id, name, text, mine, replyTo, null, false);
-  messagesBox.appendChild(wrap);
-  scrollDown();
-}
-
-function addMediaMessage(id, name, url, type, mine, replyTo) {
-  const wrap = buildMediaItem(id, name, url, type, mine, replyTo, null);
-  messagesBox.appendChild(wrap);
-  scrollDown();
-}
-
-/* ---------- Video ka pehla frame (jab dibba screen par aaye tabhi) ---------- */
-const lazyVideos = ('IntersectionObserver' in window)
-  ? new IntersectionObserver((entries) => {
-      entries.forEach((en) => {
-        if (en.isIntersecting) {
-          loadVideoSrc(en.target);
-          lazyVideos.unobserve(en.target);
-        }
+      const salt = crypto.randomBytes(16).toString('hex');
+      await roomRef(roomCode).set({
+        permanent: true,
+        salt,
+        passwordHash: hashPassword(password, salt),
+        createdAt: Date.now()
       });
-    }, { rootMargin: '150px' })
-  : null;
-
-function loadVideoSrc(v) {
-  if (v.dataset.loaded || !v.dataset.src) return;
-  v.dataset.loaded = '1';
-  v.preload = 'metadata';
-  v.src = v.dataset.src + '#t=0.1';
-}
-
-/* Photo ka dibba: tap karne par asli photo load hoti hai */
-function makeImageBox(url) {
-  const box = document.createElement('div');
-  box.className = 'media-box';
-  box.innerHTML =
-    '<svg class="ic" style="width:40px;height:40px"><use href="#i-photos"/></svg>' +
-    '<span class="ph-label">Photo</span>';
-  let loading = false;
-  box.addEventListener('click', () => {
-    if (Date.now() < suppressTapUntil || loading) return;
-    loading = true;
-    const label = box.querySelector('.ph-label');
-    label.innerText = 'Loading...';
-    const img = new Image();
-    img.onload = () => { box.replaceWith(img); };
-    img.onerror = () => {
-      loading = false;
-      label.innerText = 'Load nahi hui, dobara tap karo';
-    };
-    img.src = url;
-  });
-  return box;
-}
-
-/* Video ka dibba: pehla frame + tikona play button, tap karne par wahin chalne lagti hai */
-function makeVideoBox(url) {
-  const box = document.createElement('div');
-  box.className = 'media-box';
-
-  const v = document.createElement('video');
-  v.muted = true;
-  v.playsInline = true;
-  v.setAttribute('playsinline', '');
-  v.preload = 'none';
-  v.dataset.src = url;
-
-  const btn = document.createElement('div');
-  btn.className = 'play-btn';
-  btn.innerHTML = '<div class="play-circle"><svg viewBox="0 0 24 24"><use href="#i-play"/></svg></div>';
-
-  box.appendChild(v);
-  box.appendChild(btn);
-
-  if (lazyVideos) lazyVideos.observe(v);
-  else loadVideoSrc(v);
-
-  btn.addEventListener('click', (e) => {
-    e.stopPropagation();
-    if (Date.now() < suppressTapUntil) return;
-    btn.remove();
-    loadVideoSrc(v);
-    v.preload = 'auto';
-    v.muted = false;
-    v.controls = true;
-    const p = v.play();
-    if (p && p.catch) p.catch(() => {});
-  });
-  return box;
-}
-
-/* Dono chats ke liye common message banane wale functions */
-function buildTextItem(id, name, text, mine, replyTo, ts, edited) {
-  const wrap = document.createElement('div');
-  wrap.className = 'msg' + (mine ? ' mine' : '');
-  wrap.setAttribute('data-id', id);
-  wrap._reply = { id, name, preview: text.length > 50 ? text.slice(0, 50) + '...' : text };
-  wrap.innerHTML =
-    '<div class="sender">' + (mine ? '' : escapeHtml(name)) + '</div>' +
-    (ts ? '<div class="time">' + escapeHtml(new Date(ts).toLocaleString()) + '</div>' : '') +
-    '<div class="bubble">' + buildQuotedHtml(replyTo) +
-    '<span class="msg-text">' + linkify(text) + '</span>' +
-    (edited ? '<span class="edited-tag">(edited)</span>' : '') +
-    '</div>';
-
-  // Sirf apne text message par hold-to-edit chalega
-  if (mine) wrap._editable = true;
-  return wrap;
-}
-
-function buildMediaItem(id, name, url, type, mine, replyTo, ts) {
-  const wrap = document.createElement('div');
-  wrap.className = 'msg' + (mine ? ' mine' : '');
-  wrap.setAttribute('data-id', id);
-  const isImg = !!(type && type.startsWith('image/'));
-  const isVid = !!(type && type.startsWith('video/'));
-  let label = '\uD83D\uDCCE File';
-  if (isImg) label = '\uD83D\uDCF7 Photo';
-  else if (isVid) label = '\uD83C\uDFA5 Video';
-  wrap._reply = { id, name, preview: label };
-  wrap.innerHTML =
-    '<div class="sender">' + (mine ? '' : escapeHtml(name)) + '</div>' +
-    (ts ? '<div class="time">' + escapeHtml(new Date(ts).toLocaleString()) + '</div>' : '') +
-    '<div class="bubble">' + buildQuotedHtml(replyTo) +
-    '<div class="media-slot"></div>' +
-    '<a href="' + escapeHtml(url) + '" download>Download</a></div>';
-  const slot = wrap.querySelector('.media-slot');
-  if (isImg) slot.appendChild(makeImageBox(url));
-  else if (isVid) slot.appendChild(makeVideoBox(url));
-  return wrap;
-}
-
-/* ---------- Hold karne par message edit hone aata hai ---------- */
-let editHoldTimer = null;
-let editingWrap = null;
-
-function attachHoldEdit(container) {
-  container.addEventListener('pointerdown', (e) => {
-    const el = e.target.closest('.msg.mine');
-    if (!el || !el._editable) return;
-    if (e.target.closest('a, video, button')) return;
-    clearTimeout(editHoldTimer);
-    editHoldTimer = setTimeout(() => startEdit(el), 500);
-  });
-  ['pointerup', 'pointerleave', 'pointercancel', 'pointermove'].forEach((ev) => {
-    container.addEventListener(ev, () => clearTimeout(editHoldTimer));
-  });
-  container.addEventListener('contextmenu', (e) => {
-    if (e.target.closest('.msg.mine')) e.preventDefault();
-  });
-}
-attachHoldEdit(messagesBox);
-attachHoldEdit(historyList);
-
-function startEdit(el) {
-  const isSecret = !!el.closest('#history-list');
-  const textEl = el.querySelector('.msg-text');
-  if (!textEl) return;
-  suppressTapUntil = Date.now() + 800;
-  cancelEdit();
-  editingWrap = el;
-  el.classList.add('editing');
-  const input = isSecret ? secretMsgInput : msgInput;
-  input.value = textEl.innerText;
-  input.focus();
-}
-
-function cancelEdit() {
-  if (editingWrap) editingWrap.classList.remove('editing');
-  editingWrap = null;
-}
-
-// Edit mode mein send dabane par naya text save hota hai
-function trySubmitEdit(input) {
-  if (!editingWrap) return false;
-  const wrap = editingWrap;
-  const isSecret = !!wrap.closest('#history-list');
-  const textEl = wrap.querySelector('.msg-text');
-  const oldText = textEl ? textEl.innerText : '';
-  const newText = input.value.trim();
-  cancelEdit();
-  input.value = '';
-  if (newText && newText !== oldText) {
-    socket.emit(isSecret ? 'edit-secret-message' : 'edit-message', {
-      id: wrap.getAttribute('data-id'),
-      newText: newText
-    });
-  }
-  return true;
-}
-
-/* ---------- Message edit (normal aur secret dono chat) ---------- */
-function applyEdit(container, id, newText) {
-  const el = container.querySelector('[data-id="' + id + '"]');
-  if (!el) return;
-  const textEl = el.querySelector('.msg-text');
-  if (!textEl) return;
-  textEl.innerHTML = linkify(newText);
-  const bubble = el.querySelector('.bubble');
-  if (bubble && !bubble.querySelector('.edited-tag')) {
-    const tag = document.createElement('span');
-    tag.className = 'edited-tag';
-    tag.innerText = '(edited)';
-    bubble.appendChild(tag);
-  }
-  if (el._reply) {
-    el._reply.preview = newText.length > 50 ? newText.slice(0, 50) + '...' : newText;
-  }
-}
-
-socket.on('message-edited', ({ id, newText }) => {
-  applyEdit(messagesBox, id, newText);
-});
-
-/* ---------- Permanent room ---------- */
-const permBtn = document.getElementById('perm-btn');
-const heartBtn = document.getElementById('heart-btn');
-const modal = document.getElementById('modal');
-const modalPass = document.getElementById('modal-pass');
-const modalPass2 = document.getElementById('modal-pass2');
-let modalMode = null; // 'make' ya 'unlock'
-
-socket.on('room-info', ({ permanent }) => {
-  permBtn.style.display = permanent ? 'none' : 'inline-block';
-  heartBtn.style.display = permanent ? 'inline-block' : 'none';
-  if (permanent && modalMode === 'make' && modal.style.display === 'flex') closeModal();
-  // Dobara judne ke baad ruke hue normal messages bhej do
-  if (awaitingRejoin) flushPending();
-});
-
-function openModal(mode) {
-  modalMode = mode;
-  modalPass.value = '';
-  modalPass2.value = '';
-  setModalError('');
-  if (mode === 'make') {
-    document.getElementById('modal-title').innerText = 'Make room permanent';
-    document.getElementById('modal-note').innerText =
-      'Ek password set karo. Is room ki secret chat hamesha save rahegi. Password baad mein badal nahi sakte, yaad rakhna.';
-    modalPass2.style.display = 'block';
-  } else {
-    document.getElementById('modal-title').innerText = 'Enter password';
-    document.getElementById('modal-note').innerText = '';
-    modalPass2.style.display = 'none';
-  }
-  modal.style.display = 'flex';
-  modalPass.focus();
-}
-
-function closeModal() {
-  modal.style.display = 'none';
-  modalMode = null;
-  modalPass.value = '';
-  modalPass2.value = '';
-}
-
-function setModalError(text) {
-  document.getElementById('modal-error').innerText = text;
-}
-
-function submitModal() {
-  const pass = modalPass.value;
-  if (modalMode === 'make') {
-    if (pass.length < 4) return setModalError('Password kam se kam 4 characters ka rakho');
-    if (pass !== modalPass2.value) return setModalError('Dono password match nahi hue');
-    socket.emit('make-permanent', { password: pass });
-  } else if (modalMode === 'unlock') {
-    if (!pass) return setModalError('Password likho');
-    triedPass = pass;
-    socket.emit('unlock-history', { password: pass });
-  }
-}
-
-permBtn.addEventListener('click', () => openModal('make'));
-document.getElementById('modal-ok').addEventListener('click', submitModal);
-document.getElementById('modal-cancel').addEventListener('click', closeModal);
-[modalPass, modalPass2].forEach((el) => {
-  el.addEventListener('keypress', (e) => { if (e.key === 'Enter') submitModal(); });
-});
-
-socket.on('permanent-error', (text) => setModalError(text));
-socket.on('history-error', (text) => { triedPass = ''; setModalError(text); });
-
-// Dil wale emoji ko hold karne par password box khulega
-let holdTimer = null;
-heartBtn.addEventListener('pointerdown', () => {
-  clearTimeout(holdTimer);
-  holdTimer = setTimeout(() => {
-    holdTimer = null;
-    openModal('unlock');
-  }, 700);
-});
-['pointerup', 'pointerleave', 'pointercancel'].forEach((ev) => {
-  heartBtn.addEventListener(ev, () => clearTimeout(holdTimer));
-});
-heartBtn.addEventListener('contextmenu', (e) => e.preventDefault());
-
-/* ---------- Secret chat ---------- */
-
-// Sahi password par server aakhri 100 secret messages bhejta hai
-socket.on('history', (items) => {
-  closeModal();
-  if (triedPass) { secretPass = triedPass; triedPass = ''; }
-
-  const wasOpen = secretIsOpen();
-  // Agar edit chal raha tha to dobara list banne se pehle band kar do
-  if (wasOpen && editingWrap && historyList.contains(editingWrap)) {
-    cancelEdit();
-    secretMsgInput.value = '';
-  }
-
-  historyList.innerHTML = '';
-  historyHasMore = items.length >= HISTORY_PAGE;
-  historyLoadingMore = false;
-  historyOldestTs = items.length ? items[0].ts : null;
-
-  if (!items.length) {
-    const empty = document.createElement('div');
-    empty.className = 'hist-empty';
-    empty.id = 'hist-empty';
-    empty.innerText = 'Abhi tak koi secret message nahi hai, pehla bhejo';
-    historyList.appendChild(empty);
-  } else {
-    items.forEach(addSecretItem);
-  }
-  // Jo secret messages ruke hue the wo ghadi ke saath neeche dikhte rahein
-  pendingSecret.forEach((p) => {
-    const empty = document.getElementById('hist-empty');
-    if (empty) empty.remove();
-    historyList.appendChild(p.el);
-  });
-
-  historyPanel.style.display = 'flex';
-  historyList.scrollTop = historyList.scrollHeight;
-  if (!wasOpen) secretMsgInput.focus();
-
-  if (awaitingSecret) flushSecretPending();
-
-  // Network ke baad dobara judne par agar notes khule the to unhe taaza kar do
-  if (notesIsOpen()) socket.emit('get-notes');
-});
-
-// Upar scroll karte hi aur purane messages mangwao
-function showHistLoader() {
-  if (document.getElementById('hist-loader')) return;
-  const d = document.createElement('div');
-  d.id = 'hist-loader';
-  d.className = 'history-loader';
-  d.innerText = 'Loading older messages...';
-  historyList.insertBefore(d, historyList.firstChild);
-}
-
-function removeHistLoader() {
-  const d = document.getElementById('hist-loader');
-  if (d) d.remove();
-}
-
-function loadOlderHistory() {
-  if (!secretIsOpen() || !historyHasMore || historyLoadingMore) return;
-  if (!historyOldestTs || !socket.connected) return;
-  historyLoadingMore = true;
-  showHistLoader();
-  socket.emit('load-more-history', { before: historyOldestTs });
-}
-
-historyList.addEventListener('scroll', () => {
-  if (historyList.scrollTop < 80) loadOlderHistory();
-});
-
-socket.on('history-more', (items) => {
-  historyLoadingMore = false;
-  removeHistLoader();
-  if (!secretIsOpen()) return;
-  historyHasMore = items.length >= HISTORY_PAGE;
-  if (!items.length) return;
-  historyOldestTs = items[0].ts;
-
-  // Purane messages upar jodo, par jahan padh rahe the wahin tike raho
-  const prevHeight = historyList.scrollHeight;
-  const prevTop = historyList.scrollTop;
-  const frag = document.createDocumentFragment();
-  items.forEach((m) => frag.appendChild(buildSecretEl(m)));
-  historyList.insertBefore(frag, historyList.firstChild);
-  historyList.scrollTop = prevTop + (historyList.scrollHeight - prevHeight);
-});
-
-socket.on('history-more-error', () => {
-  historyLoadingMore = false;
-  removeHistLoader();
-});
-
-// Naya secret message (sirf unlock kiye hue logon ko aata hai)
-socket.on('secret-message', (m) => {
-  if (!secretIsOpen()) return;
-  secretTypingUsers.delete(m.name);
-  renderTyping(secretTypingLine, secretTypingUsers);
-  addSecretItem(m);
-  historyList.scrollTop = historyList.scrollHeight;
-});
-
-// Secret message edit hone par
-socket.on('secret-message-edited', ({ id, newText }) => {
-  applyEdit(historyList, id, newText);
-});
-
-function buildSecretEl(m) {
-  const mine = m.name === myName;
-  const el = (m.kind === 'media' && m.url)
-    ? buildMediaItem(m.id, m.name, m.url, m.type, mine, m.replyTo, m.ts)
-    : buildTextItem(m.id, m.name, m.message || '', mine, m.replyTo, m.ts, !!m.edited);
-  if (Array.isArray(m.hearts) && m.hearts.length) {
-    el._hearts = new Set(m.hearts);
-    renderHearts(el);
-  }
-  return el;
-}
-
-function addSecretItem(m) {
-  const empty = document.getElementById('hist-empty');
-  if (empty) empty.remove();
-  historyList.appendChild(buildSecretEl(m));
-}
-
-function startSecretReply(r) {
-  secretReplyingTo = { id: r.id, name: r.name, preview: r.preview };
-  document.getElementById('secret-rp-text').innerText = 'Replying to ' + r.name + ': ' + r.preview;
-  document.getElementById('secret-reply-preview').style.display = 'flex';
-  secretMsgInput.focus();
-}
-
-function cancelSecretReply() {
-  secretReplyingTo = null;
-  document.getElementById('secret-reply-preview').style.display = 'none';
-}
-
-function sendSecretMessage() {
-  if (trySubmitEdit(secretMsgInput)) return;
-  const text = secretMsgInput.value.trim();
-  if (!text) return;
-  sendOrQueue(true, 'secret-message', { message: text, replyTo: secretReplyingTo });
-  secretMsgInput.value = '';
-  cancelSecretReply();
-  stopSecretTyping();
-}
-
-secretMsgInput.addEventListener('keypress', (e) => {
-  if (e.key === 'Enter') sendSecretMessage();
-});
-
-document.getElementById('secret-media-input').addEventListener('change', async (e) => {
-  const file = e.target.files[0];
-  if (!file) return;
-
-  try {
-    const result = await uploadFile(file, true);
-    sendOrQueue(true, 'secret-media-message', { url: result.url, type: result.type, replyTo: secretReplyingTo });
-    cancelSecretReply();
-  } catch (err) {
-    alert(uploadErrorText(err));
-  }
-  e.target.value = '';
-});
-
-function closeHistory() {
-  stopSecretTyping();
-  cancelEdit();
-  secretMsgInput.value = '';
-  closeMedia();
-  closeNotes();
-  notesBadge = 0;
-  updateNotesDot();
-  historyPanel.style.display = 'none';
-  historyList.innerHTML = '';
-  historyHasMore = false;
-  historyLoadingMore = false;
-  historyOldestTs = null;
-  cancelSecretReply();
-  // Khud bahar aaye to ruke hue secret messages aur password dono hat jayein
-  pendingSecret.length = 0;
-  secretPass = '';
-  triedPass = '';
-  awaitingSecret = false;
-  secretTypingUsers.clear();
-  renderTyping(secretTypingLine, secretTypingUsers);
-}
-
-/* ---------- Secret media (gallery) ---------- */
-const mediaPanel = document.getElementById('media-panel');
-const mediaGrid = document.getElementById('media-grid');
-let mediaOldestTs = null;
-
-function gridNote(text) {
-  const d = document.createElement('div');
-  d.className = 'grid-note';
-  d.innerText = text;
-  return d;
-}
-
-function openMedia() {
-  mediaGrid.innerHTML = '';
-  mediaOldestTs = null;
-  mediaGrid.appendChild(gridNote('Loading...'));
-  mediaPanel.style.display = 'flex';
-  socket.emit('get-media', {});
-}
-
-function closeMedia() {
-  mediaPanel.style.display = 'none';
-  mediaGrid.innerHTML = '';
-  mediaOldestTs = null;
-}
-
-socket.on('media-list', (res) => {
-  if (mediaPanel.style.display !== 'flex') return;
-  const items = (res && res.items) || [];
-  const append = !!(res && res.append);
-
-  // "Loading..." ya "Aur dikhao" wali purani line hata do
-  mediaGrid.querySelectorAll('.grid-note').forEach((n) => n.remove());
-  if (!append) mediaGrid.innerHTML = '';
-
-  if (!items.length && !append) {
-    mediaGrid.appendChild(gridNote('Abhi koi media nahi hai'));
-    return;
-  }
-
-  items.forEach((m) => {
-    if (!m.url) return;
-    const cell = document.createElement('div');
-    cell.className = 'media-item';
-    const link = document.createElement('a');
-    link.href = m.url;
-    link.target = '_blank';
-    link.rel = 'noopener noreferrer';
-    let thumb;
-    if (m.type && m.type.startsWith('video/')) {
-      thumb = document.createElement('video');
-      thumb.muted = true;
-      thumb.playsInline = true;
-      thumb.setAttribute('playsinline', '');
-      thumb.preload = 'none';
-      thumb.dataset.src = m.url;
-      if (lazyVideos) lazyVideos.observe(thumb);
-      else loadVideoSrc(thumb);
-    } else {
-      thumb = document.createElement('img');
-      thumb.src = m.url;
-      thumb.loading = 'lazy';
-    }
-    link.appendChild(thumb);
-    const cap = document.createElement('small');
-    cap.innerText = (m.name || '') + ' \u2022 ' + (m.ts ? new Date(m.ts).toLocaleDateString() : '');
-    cell.appendChild(link);
-    cell.appendChild(cap);
-    mediaGrid.appendChild(cell);
-  });
-
-  if (items.length) mediaOldestTs = items[items.length - 1].ts;
-
-  if (res && res.done === false && mediaOldestTs) {
-    const note = gridNote('');
-    const btn = document.createElement('button');
-    btn.innerText = 'Aur dikhao';
-    btn.onclick = () => {
-      note.remove();
-      mediaGrid.appendChild(gridNote('Loading...'));
-      socket.emit('get-media', { before: mediaOldestTs });
-    };
-    note.appendChild(btn);
-    mediaGrid.appendChild(note);
-  }
-});
-
-/* ---------- Notes + points (secret chat) ---------- */
-const notesPanel = document.getElementById('notes-panel');
-const notesDot = document.getElementById('notes-dot');
-const notesBody = document.getElementById('notes-body');
-const pointsRow = document.getElementById('points-row');
-const pendingList = document.getElementById('pending-list');
-const notesList = document.getElementById('notes-list');
-const noteInput = document.getElementById('note-input');
-const reasonPanel = document.getElementById('reason-panel');
-const reasonInput = document.getElementById('reason-input');
-const reasonError = document.getElementById('reason-error');
-const phistPanel = document.getElementById('phist-panel');
-const phistList = document.getElementById('phist-list');
-
-let notesBadge = 0;      // mere approval ke liye kitni requests ruki hain (laal nishan)
-let notesData = null;    // notes khule hon tab: { notes, points, pending }
-let reasonTarget = null; // { target, delta }
-let phistTarget = null;  // jis user ki history khuli hai
-
-function notesIsOpen() { return notesPanel.style.display === 'flex'; }
-function phistIsOpen() { return phistPanel.style.display === 'flex'; }
-
-function updateNotesDot() {
-  notesDot.style.display = notesBadge > 0 ? 'block' : 'none';
-}
-
-function smallNote(text) {
-  const d = document.createElement('div');
-  d.className = 'small-note';
-  d.innerText = text;
-  return d;
-}
-
-function signText(delta) {
-  return delta > 0 ? '+1' : '\u22121';
-}
-
-function statusText(r) {
-  if (r.status === 'approved') return '\u2705 Approved by ' + (r.resolvedBy || '');
-  if (r.status === 'denied') return '\u274C Denied by ' + (r.resolvedBy || '');
-  return '\u23F3 Pending';
-}
-
-function openNotes() {
-  notesData = null;
-  pointsRow.innerHTML = '';
-  pendingList.innerHTML = '';
-  notesList.innerHTML = '';
-  pointsRow.appendChild(smallNote('Loading...'));
-  notesPanel.style.display = 'flex';
-  notesBody.scrollTop = 0;
-  socket.emit('get-notes');
-}
-
-function closeNotes() {
-  notesPanel.style.display = 'none';
-  closeReason();
-  closePointHistory();
-  notesData = null;
-  noteInput.value = '';
-  pointsRow.innerHTML = '';
-  pendingList.innerHTML = '';
-  notesList.innerHTML = '';
-}
-
-socket.on('notes-badge', ({ count }) => {
-  notesBadge = count || 0;
-  updateNotesDot();
-});
-
-socket.on('notes-data', (d) => {
-  if (!notesIsOpen()) return;
-  notesData = {
-    notes: (d && d.notes) || [],
-    points: (d && d.points) || [],
-    pending: (d && d.pending) || []
-  };
-  notesBadge = notesData.pending.filter((r) => r.from !== myName).length;
-  updateNotesDot();
-  renderPoints();
-  renderPending();
-  renderNotes();
-});
-
-socket.on('notes-error', (text) => {
-  toast(text || 'Kuch gadbad hui, dobara try karo');
-  if (notesIsOpen() && !notesData) {
-    pointsRow.innerHTML = '';
-    pointsRow.appendChild(smallNote(text || 'Load nahi hua'));
-  }
-});
-
-/* Points ke dibbe (har user ka ek) */
-function renderPoints() {
-  pointsRow.innerHTML = '';
-  const pts = notesData ? notesData.points : [];
-  if (!pts.length) {
-    pointsRow.appendChild(smallNote('Abhi koi user nahi'));
-    return;
-  }
-  pts.forEach((p) => {
-    const box = document.createElement('div');
-    box.className = 'pbox';
-
-    const nm = document.createElement('div');
-    nm.className = 'pname';
-    nm.innerText = p.name + (p.name === myName ? ' (you)' : '');
-
-    const val = document.createElement('div');
-    val.className = 'pval';
-    val.innerText = p.points;
-
-    const act = document.createElement('div');
-    act.className = 'pact';
-
-    const minus = document.createElement('button');
-    minus.innerText = '\u2212';
-    minus.title = '-1 point';
-    minus.onclick = () => askPoint(p.name, -1);
-
-    const plus = document.createElement('button');
-    plus.innerText = '+';
-    plus.title = '+1 point';
-    plus.onclick = () => askPoint(p.name, 1);
-
-    const hist = document.createElement('button');
-    hist.className = 'hist';
-    hist.title = 'History';
-    hist.innerHTML = '<svg class="ic"><use href="#i-history"/></svg>';
-    hist.onclick = () => openPointHistory(p.name);
-
-    act.appendChild(minus);
-    act.appendChild(plus);
-    act.appendChild(hist);
-    box.appendChild(nm);
-    box.appendChild(val);
-    box.appendChild(act);
-    pointsRow.appendChild(box);
-  });
-}
-
-/* Approval ke liye ruki requests */
-function renderPending() {
-  pendingList.innerHTML = '';
-  const list = notesData ? notesData.pending : [];
-  if (!list.length) {
-    pendingList.appendChild(smallNote('Koi request ruki nahi hai'));
-    return;
-  }
-  list.forEach((r) => pendingList.appendChild(buildRequestCard(r)));
-}
-
-function buildRequestCard(r) {
-  const card = document.createElement('div');
-  card.className = 'req-card';
-
-  const top = document.createElement('div');
-  top.className = 'req-top';
-  top.innerText = r.from + ' \u2192 ' + r.target + ': ' + signText(r.delta) + ' point';
-
-  const why = document.createElement('div');
-  why.className = 'req-why';
-  why.innerText = 'Reason: ' + r.reason;
-
-  card.appendChild(top);
-  card.appendChild(why);
-
-  if (r.from !== myName) {
-    const row = document.createElement('div');
-    row.className = 'req-actions';
-    const ok = document.createElement('button');
-    ok.className = 'ok';
-    ok.innerText = 'Approve';
-    const no = document.createElement('button');
-    no.className = 'no';
-    no.innerText = 'Deny';
-    const respond = (approve) => {
-      if (!socket.connected) return toast('Network nahi hai');
-      ok.disabled = true;
-      no.disabled = true;
-      socket.emit('point-respond', { id: r.id, approve: approve });
-    };
-    ok.onclick = () => respond(true);
-    no.onclick = () => respond(false);
-    row.appendChild(ok);
-    row.appendChild(no);
-    card.appendChild(row);
-  } else {
-    const wait = document.createElement('div');
-    wait.className = 'req-wait';
-    wait.innerText = '\u23F3 Dusre ke approval ka wait';
-    card.appendChild(wait);
-  }
-  return card;
-}
-
-/* Notes */
-function renderNotes() {
-  notesList.innerHTML = '';
-  const list = notesData ? notesData.notes : [];
-  if (!list.length) {
-    notesList.appendChild(smallNote('Abhi koi note nahi hai'));
-    return;
-  }
-  list.forEach((n) => notesList.appendChild(buildNoteItem(n)));
-}
-
-function buildNoteItem(n) {
-  const el = document.createElement('div');
-  el.className = 'note-item';
-  el.innerHTML =
-    '<div class="note-meta">' + escapeHtml(n.name || '') + ' \u2022 ' +
-    escapeHtml(new Date(n.ts).toLocaleString()) + '</div>' +
-    '<div class="note-text">' + linkify(n.text || '') + '</div>';
-  return el;
-}
-
-function sendNote() {
-  const text = noteInput.value.trim();
-  if (!text) return;
-  if (!socket.connected) return toast('Network nahi hai');
-  socket.emit('add-note', { text: text });
-  noteInput.value = '';
-}
-
-noteInput.addEventListener('keypress', (e) => {
-  if (e.key === 'Enter') sendNote();
-});
-
-socket.on('note-added', (n) => {
-  if (!notesIsOpen() || !notesData) return;
-  notesData.notes.unshift(n);
-  const empty = notesList.querySelector('.small-note');
-  if (empty) empty.remove();
-  notesList.insertBefore(buildNoteItem(n), notesList.firstChild);
-});
-
-/* Point badhane / ghatane se pehle reason poochna */
-function askPoint(target, delta) {
-  if (!socket.connected) return toast('Network nahi hai');
-  reasonTarget = { target: target, delta: delta };
-  document.getElementById('reason-title').innerText = signText(delta) + ' point: ' + target;
-  reasonInput.value = '';
-  reasonError.innerText = '';
-  reasonPanel.style.display = 'flex';
-  reasonInput.focus();
-}
-
-function closeReason() {
-  reasonPanel.style.display = 'none';
-  reasonTarget = null;
-  reasonInput.value = '';
-  reasonError.innerText = '';
-}
-
-function submitReason() {
-  if (!reasonTarget) return;
-  const reason = reasonInput.value.trim();
-  if (!reason) {
-    reasonError.innerText = 'Reason likhna zaroori hai';
-    return;
-  }
-  if (!socket.connected) {
-    reasonError.innerText = 'Network nahi hai';
-    return;
-  }
-  socket.emit('point-request', {
-    target: reasonTarget.target,
-    delta: reasonTarget.delta,
-    reason: reason
-  });
-  closeReason();
-  toast('Request bhej di, approval ka wait');
-}
-
-document.getElementById('reason-ok').addEventListener('click', submitReason);
-document.getElementById('reason-cancel').addEventListener('click', closeReason);
-reasonInput.addEventListener('keypress', (e) => {
-  if (e.key === 'Enter') submitReason();
-});
-
-/* Kisi ne nayi request bheji (ya maine khud bheji) */
-socket.on('point-request-new', (r) => {
-  if (r.from !== myName) {
-    notesBadge++;
-    updateNotesDot();
-    if (secretIsOpen() && !notesIsOpen()) toast(r.from + ' ne ek point request bheji');
-  }
-  if (notesIsOpen() && notesData) {
-    notesData.pending.push(r);
-    renderPending();
-  }
-  if (phistIsOpen() && phistTarget === r.target) socket.emit('get-point-history', { target: phistTarget });
-});
-
-/* Request par approve ya deny ho gaya */
-socket.on('point-request-resolved', ({ req, points }) => {
-  if (req.from !== myName) notesBadge = Math.max(0, notesBadge - 1);
-  updateNotesDot();
-  if (req.from === myName) {
-    toast(req.resolvedBy + (req.status === 'approved' ? ' ne approve kiya \u2705' : ' ne deny kiya \u274C'));
-  }
-  if (notesIsOpen() && notesData) {
-    notesData.pending = notesData.pending.filter((x) => x.id !== req.id);
-    if (req.status === 'approved') {
-      const p = notesData.points.find((x) => x.name === req.target);
-      if (p) p.points = points;
-    }
-    renderPoints();
-    renderPending();
-  }
-  if (phistIsOpen() && phistTarget === req.target) socket.emit('get-point-history', { target: phistTarget });
-});
-
-/* Naya user secret chat mein aaya to uska dibba bhi aa jaye */
-socket.on('point-user', ({ name, points }) => {
-  if (!notesIsOpen() || !notesData) return;
-  if (notesData.points.some((p) => p.name === name)) return;
-  notesData.points.push({ name: name, points: points || 0 });
-  notesData.points.sort((a, b) => String(a.name).localeCompare(String(b.name)));
-  renderPoints();
-});
-
-/* Ek user ke points ki history */
-function openPointHistory(target) {
-  phistTarget = target;
-  document.getElementById('phist-title').innerText = target + ' ki history';
-  phistList.innerHTML = '';
-  phistList.appendChild(smallNote('Loading...'));
-  phistPanel.style.display = 'flex';
-  socket.emit('get-point-history', { target: target });
-}
-
-function closePointHistory() {
-  phistPanel.style.display = 'none';
-  phistTarget = null;
-  phistList.innerHTML = '';
-}
-
-socket.on('point-history', ({ target, items }) => {
-  if (!phistIsOpen() || phistTarget !== target) return;
-  phistList.innerHTML = '';
-  if (!items || !items.length) {
-    phistList.appendChild(smallNote('Abhi koi history nahi hai'));
-    return;
-  }
-  items.forEach((r) => phistList.appendChild(buildHistoryItem(r)));
-});
-
-function buildHistoryItem(r) {
-  const el = document.createElement('div');
-  el.className = 'hist-item';
-
-  const top = document.createElement('div');
-  const sign = document.createElement('span');
-  sign.className = 'hist-sign ' + (r.delta > 0 ? 'plus' : 'minus');
-  sign.innerText = signText(r.delta);
-  const st = document.createElement('span');
-  st.className = 'hist-status';
-  st.innerText = statusText(r);
-  top.appendChild(sign);
-  top.appendChild(st);
-
-  const why = document.createElement('div');
-  why.innerText = r.reason;
-
-  const meta = document.createElement('div');
-  meta.className = 'hist-meta';
-  meta.innerText = 'Request: ' + r.from + ' \u2022 ' + new Date(r.ts).toLocaleString();
-
-  el.appendChild(top);
-  el.appendChild(why);
-  el.appendChild(meta);
-  return el;
-}
-
-/* ---------- Call (audio + video) ---------- */
-const callScreen = document.getElementById('call-screen');
-const remoteVideo = document.getElementById('remote-video');
-const localVideoEl = document.getElementById('local-video');
-const incomingScreen = document.getElementById('incoming-screen');
-const toastEl = document.getElementById('toast');
-
-let iceServers = [{ urls: 'stun:stun.l.google.com:19302' }];
-fetch('/ice-config')
-  .then((r) => r.json())
-  .then((c) => { if (c && c.iceServers) iceServers = c.iceServers; })
-  .catch(() => {});
-
-let callState = 'idle'; // idle | calling | incall
-let callPeerId = null;
-let peerName = '';
-let callIsSecret = false;
-let incomingCall = null;
-let pc = null;
-let localStream = null;
-let localVideoTrack = null;
-let videoSender = null;
-let localVideoOn = false;       // meri camera chal rahi hai (preview dikh raha hai)
-let videoSending = false;       // meri video samne wale ko ja rahi hai
-let remoteVideoOn = false;      // samne wale ki video aa rahi hai
-let videoRequestPending = false;
-let videoRequestTimer = null;
-let swapped = false;            // chhoti/badi window badli hui hai ya nahi
-let micOn = true;
-let speakerOn = false;
-let pendingCandidates = [];
-let callTimeout = null;
-let callTimer = null;
-let ringTimer = null;
-let qualityTimer = null;
-let audioCtx = null;
-let toastTimer = null;
-
-function toast(text) {
-  toastEl.innerText = text;
-  toastEl.style.display = 'block';
-  clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => { toastEl.style.display = 'none'; }, 3000);
-}
-
-function setStatus(text) {
-  document.getElementById('call-status').innerText = text || '';
-}
-
-function setIcon(btnId, iconId) {
-  const u = document.querySelector('#' + btnId + ' use');
-  if (u) u.setAttribute('href', '#' + iconId);
-}
-
-/* Call / video aane par poori screen: laal (kaato) aur hara (uthao) gol button */
-function showIncoming(title, name, isVideo, onOk, onNo) {
-  document.getElementById('inc-title').innerText = title;
-  document.getElementById('inc-name').innerText = name || '';
-  document.getElementById('inc-avatar').innerText = (name || '').charAt(0).toUpperCase();
-  document.getElementById('inc-ok-icon').setAttribute('href', isVideo ? '#i-video' : '#i-phone');
-  document.getElementById('inc-ok').onclick = onOk;
-  document.getElementById('inc-no').onclick = onNo;
-  incomingScreen.style.display = 'flex';
-}
-
-function hideIncoming() {
-  incomingScreen.style.display = 'none';
-}
-
-/* Ringtone (chhota sa beep) */
-function beep() {
-  try {
-    audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
-    const o = audioCtx.createOscillator();
-    const g = audioCtx.createGain();
-    o.frequency.value = 440;
-    g.gain.value = 0.05;
-    o.connect(g);
-    g.connect(audioCtx.destination);
-    o.start();
-    o.stop(audioCtx.currentTime + 0.4);
-  } catch (e) {}
-}
-
-function startRing() {
-  stopRing();
-  beep();
-  ringTimer = setInterval(() => {
-    beep();
-    if (navigator.vibrate) navigator.vibrate(300);
-  }, 1500);
-}
-
-function stopRing() {
-  if (ringTimer) { clearInterval(ringTimer); ringTimer = null; }
-}
-
-/* Dono video: jab dono chalu ho to ek badi ek chhoti (tap karke badal sakte ho) */
-function setVideoBox(el, on, big) {
-  el.classList.toggle('cv-big', big);
-  el.classList.toggle('cv-small', !big);
-  el.classList.toggle('show', on);
-}
-
-function layoutVideos() {
-  const both = localVideoOn && remoteVideoOn;
-  const bigIsLocal = both ? swapped : localVideoOn;
-  setVideoBox(remoteVideo, remoteVideoOn, !bigIsLocal);
-  setVideoBox(localVideoEl, localVideoOn, bigIsLocal);
-  document.getElementById('call-avatar').style.display = (localVideoOn || remoteVideoOn) ? 'none' : 'flex';
-}
-
-[remoteVideo, localVideoEl].forEach((el) => {
-  el.addEventListener('click', () => {
-    if (localVideoOn && remoteVideoOn && el.classList.contains('cv-small')) {
-      swapped = !swapped;
-      layoutVideos();
+      permanentRooms.set(roomCode, true);
+      io.to(roomCode).emit('room-info', { permanent: true });
+      io.to(roomCode).emit('system-message', 'Ye room ab permanent hai');
+    } catch (err) {
+      console.error('Make permanent failed:', err.message);
+      socket.emit('permanent-error', 'Kuch gadbad hui, dobara try karo');
     }
   });
-});
 
-function updateCallUI() {
-  layoutVideos();
-  setIcon('mute-btn', micOn ? 'i-mic' : 'i-mic-off');
-  document.getElementById('mute-btn').classList.toggle('active', !micOn);
-  setIcon('speaker-btn', 'i-speaker');
-  document.getElementById('speaker-btn').classList.toggle('active', speakerOn);
-  document.getElementById('video-btn').classList.toggle('active', localVideoOn);
-}
+  // Secret chat unlock karne ke liye password
+  socket.on('unlock-history', async ({ password }) => {
+    const { roomCode } = socket.data;
+    if (!roomCode || !db) return;
 
-function setCallName() {
-  document.getElementById('call-name').innerText = (callIsSecret ? '\uD83D\uDD12 ' : '') + (peerName || '');
-  document.getElementById('call-avatar').innerText = (peerName || '').charAt(0).toUpperCase();
-}
-
-function openCallScreen(status) {
-  setCallName();
-  setStatus(status);
-  callScreen.style.display = 'flex';
-  updateCallUI();
-}
-
-async function getMic() {
-  try {
-    localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    return true;
-  } catch (err) {
-    toast('Mic ki permission chahiye');
-    return false;
-  }
-}
-
-function sendSignal(data) {
-  if (callPeerId) socket.emit('call-signal', { to: callPeerId, data });
-}
-
-/* ----- Call shuru karna (secret = true to secret chat wali call) ----- */
-async function startCall(secret) {
-  if (callState !== 'idle') return;
-  if (!joined || !socket.connected) return toast('Network nahi hai');
-  if (!(await getMic())) return;
-
-  callIsSecret = secret === true;
-  callState = 'calling';
-  peerName = '';
-  openCallScreen('Calling...');
-  socket.emit('call-start', { secret: callIsSecret });
-
-  clearTimeout(callTimeout);
-  callTimeout = setTimeout(() => {
-    if (callState === 'calling') {
-      socket.emit('call-cancel');
-      cleanupCall('Kisi ne call nahi uthayi');
+    if (Date.now() < socket.data.lockUntil) {
+      return socket.emit('history-error', 'Bahut galat try ho gaye, thodi der baad try karo');
     }
-  }, 45000);
-}
 
-/* ----- Samne wale ki taraf: call aayi ----- */
-socket.on('incoming-call', ({ from, name, secret }) => {
-  // Pehle se call mein hain to apne aap kaat do
-  if (callState !== 'idle' || incomingCall) {
-    socket.emit('call-response', { to: from, accepted: false });
-    return;
-  }
-  incomingCall = { from, name, secret: secret === true };
-  startRing();
-  showIncoming(
-    secret ? '\uD83D\uDD12 Secret chat call' : 'Incoming call',
-    name,
-    false,
-    acceptIncoming,
-    declineIncoming
-  );
-});
-
-socket.on('call-cancelled', ({ from }) => {
-  if (incomingCall && incomingCall.from === from) {
-    const n = incomingCall.name;
-    incomingCall = null;
-    stopRing();
-    hideIncoming();
-    toast('Missed call: ' + n);
-  }
-});
-
-async function acceptIncoming() {
-  const c = incomingCall;
-  incomingCall = null;
-  hideIncoming();
-  stopRing();
-  if (!c) return;
-
-  if (!(await getMic())) {
-    socket.emit('call-response', { to: c.from, accepted: false });
-    return;
-  }
-  callIsSecret = c.secret;
-  callPeerId = c.from;
-  peerName = c.name;
-  callState = 'incall';
-  makePeer();
-  openCallScreen('Connecting...');
-  socket.emit('call-response', { to: c.from, accepted: true });
-}
-
-function declineIncoming() {
-  const c = incomingCall;
-  incomingCall = null;
-  hideIncoming();
-  stopRing();
-  if (c) socket.emit('call-response', { to: c.from, accepted: false });
-}
-
-/* ----- Caller ko jawab mila ----- */
-socket.on('call-response', async ({ from, accepted, name }) => {
-  if (callState !== 'calling') {
-    // Humne pehle hi cut kar diya tha
-    if (accepted) socket.emit('call-end');
-    return;
-  }
-  if (!accepted) {
-    cleanupCall('Call kaat di gayi');
-    return;
-  }
-  clearTimeout(callTimeout);
-  callPeerId = from;
-  peerName = name || 'Dost';
-  callState = 'incall';
-  setCallName();
-  setStatus('Connecting...');
-
-  try {
-    makePeer();
-    localStream.getAudioTracks().forEach((t) => pc.addTrack(t, localStream));
-    // Video ke liye jagah pehle se bana ke rakhte hain, camera baad mein chalega
-    videoSender = pc.addTransceiver('video', { direction: 'sendrecv' }).sender;
-    const offer = await pc.createOffer();
-    await pc.setLocalDescription(offer);
-    sendSignal({ type: 'offer', sdp: offer.sdp });
-  } catch (err) {
-    console.error(err);
-    socket.emit('call-end');
-    cleanupCall('Call shuru nahi ho payi');
-  }
-});
-
-/* ----- WebRTC connection ----- */
-function makePeer() {
-  pc = new RTCPeerConnection({ iceServers });
-  pendingCandidates = [];
-  const rs = new MediaStream();
-  remoteVideo.srcObject = rs;
-
-  pc.ontrack = (e) => {
-    rs.addTrack(e.track);
-    remoteVideo.play().catch(() => {});
-  };
-  pc.onicecandidate = (e) => {
-    if (e.candidate) sendSignal({ type: 'ice', candidate: e.candidate.toJSON() });
-  };
-  pc.onconnectionstatechange = () => {
-    if (!pc) return;
-    const st = pc.connectionState;
-    if (st === 'connected') startTimer();
-    else if (st === 'failed') {
-      socket.emit('call-end');
-      cleanupCall('Call jud nahi payi, dobara try karo');
-    }
-  };
-}
-
-async function flushCandidates() {
-  while (pc && pendingCandidates.length) {
-    try { await pc.addIceCandidate(pendingCandidates.shift()); } catch (e) {}
-  }
-}
-
-function startTimer() {
-  if (callTimer) return;
-  const start = Date.now();
-  const pad = (n) => (n < 10 ? '0' : '') + n;
-  const tick = () => {
-    const s = Math.floor((Date.now() - start) / 1000);
-    setStatus(pad(Math.floor(s / 60)) + ':' + pad(s % 60));
-  };
-  tick();
-  callTimer = setInterval(tick, 1000);
-}
-
-socket.on('call-signal', async ({ from, data }) => {
-  if (from !== callPeerId || !data) return;
-  try {
-    switch (data.type) {
-      case 'offer': {
-        if (!pc) return;
-        await pc.setRemoteDescription({ type: 'offer', sdp: data.sdp });
-        await flushCandidates();
-        localStream.getAudioTracks().forEach((t) => pc.addTrack(t, localStream));
-        const vt = pc.getTransceivers().find((t) => t.receiver.track && t.receiver.track.kind === 'video');
-        if (vt) { vt.direction = 'sendrecv'; videoSender = vt.sender; }
-        const answer = await pc.createAnswer();
-        await pc.setLocalDescription(answer);
-        sendSignal({ type: 'answer', sdp: answer.sdp });
-        break;
+    try {
+      const snap = await roomRef(roomCode).get();
+      if (!snap.exists || snap.data().permanent !== true) {
+        return socket.emit('history-error', 'Ye room permanent nahi hai');
       }
-      case 'answer':
-        if (!pc) return;
-        await pc.setRemoteDescription({ type: 'answer', sdp: data.sdp });
-        await flushCandidates();
-        break;
-      case 'ice':
-        if (pc && pc.remoteDescription) {
-          try { await pc.addIceCandidate(data.candidate); } catch (e) {}
-        } else {
-          pendingCandidates.push(data.candidate);
+      const { salt, passwordHash } = snap.data();
+
+      if (typeof password !== 'string' || !checkPassword(password, salt, passwordHash)) {
+        socket.data.failedAttempts += 1;
+        if (socket.data.failedAttempts >= 5) {
+          socket.data.lockUntil = Date.now() + 60 * 1000;
+          socket.data.failedAttempts = 0;
         }
-        break;
-      case 'video-request':
-        if (localVideoOn) {
-          // Dono ek saath video chahte the, to seedha mil jao
-          videoRequestPending = false;
-          clearTimeout(videoRequestTimer);
-          sendSignal({ type: 'video-accept' });
-          await sendCamera();
-        } else {
-          showIncoming(
-            'Video call',
-            peerName,
-            true,
-            async () => {
-              hideIncoming();
-              sendSignal({ type: 'video-accept' });
-              if (await startCamera()) await sendCamera();
-            },
-            () => {
-              hideIncoming();
-              sendSignal({ type: 'video-decline' });
-            }
-          );
-        }
-        break;
-      case 'video-accept':
-        videoRequestPending = false;
-        clearTimeout(videoRequestTimer);
-        if (localVideoOn) await sendCamera();
-        break;
-      case 'video-decline':
-        videoRequestPending = false;
-        clearTimeout(videoRequestTimer);
-        await stopCamera();
-        toast(peerName + ' ne video nahi liya');
-        break;
-      case 'video-state':
-        remoteVideoOn = data.on === true;
-        if (!remoteVideoOn) swapped = false;
-        updateCallUI();
-        break;
+        return socket.emit('history-error', 'Galat password');
+      }
+
+      socket.data.failedAttempts = 0;
+      socket.data.unlocked = true;
+
+      // Sirf aakhri HISTORY_PAGE messages. Purane messages scroll karne par alag se aate hain.
+      const msgs = await roomRef(roomCode)
+        .collection('secretMessages')
+        .orderBy('ts', 'desc')
+        .limit(HISTORY_PAGE)
+        .get();
+      const history = msgs.docs.map((d) => d.data()).reverse();
+      socket.emit('history', history);
+
+      // Notes ke liye: mera points wala dibba bana do aur laal nishan ka count bhejo
+      ensurePointUser(roomCode, socket.data.name);
+      sendNotesBadge(socket);
+    } catch (err) {
+      console.error('History load failed:', err.message);
+      socket.emit('history-error', 'History load nahi ho payi');
     }
-  } catch (err) {
-    console.error('Call signal error:', err);
-  }
-});
+  });
 
-socket.on('call-ended', () => {
-  if (callState !== 'idle') cleanupCall('Call khatam');
-});
+  // Upar scroll karne par aur purane secret messages
+  socket.on('load-more-history', async ({ before } = {}) => {
+    const { roomCode, unlocked } = socket.data;
+    if (!roomCode || !unlocked || !db) return;
+    if (typeof before !== 'number') return socket.emit('history-more-error');
 
-/* ----- Call ke buttons ----- */
-function toggleMute() {
-  if (!localStream) return;
-  micOn = !micOn;
-  localStream.getAudioTracks().forEach((t) => { t.enabled = micOn; });
-  updateCallUI();
-}
+    try {
+      const msgs = await roomRef(roomCode)
+        .collection('secretMessages')
+        .where('ts', '<', before)
+        .orderBy('ts', 'desc')
+        .limit(HISTORY_PAGE)
+        .get();
+      socket.emit('history-more', msgs.docs.map((d) => d.data()).reverse());
+    } catch (err) {
+      console.error('More history failed:', err.message);
+      socket.emit('history-more-error');
+    }
+  });
 
-// Speaker: awaaz kabhi band nahi hoti. Jahan browser allow kare wahan loudspeaker aur kaan
-// wale speaker ke beech badalta hai, warna bata deta hai ki ye phone mein nahi ho sakta.
-async function toggleSpeaker() {
-  if (typeof remoteVideo.setSinkId !== 'function') {
-    toast('Is phone mein speaker yahan se nahi badalta. iPhone mein Control Center se Speaker chuno');
-    return;
-  }
-  try {
-    const devs = (await navigator.mediaDevices.enumerateDevices()).filter((d) => d.kind === 'audiooutput');
-    const speaker = devs.find((d) => /speaker/i.test(d.label));
-    if (!speaker || devs.length < 2) {
-      toast('Is phone mein ye option nahi mila');
+  // Secret chat ki media ki list (media button ke liye), MEDIA_PAGE ki kishton mein
+  socket.on('get-media', async ({ before } = {}) => {
+    const { roomCode, unlocked } = socket.data;
+    if (!roomCode || !unlocked || !db) return;
+    const append = typeof before === 'number';
+    try {
+      let q = roomRef(roomCode).collection('secretMedia');
+      if (append) q = q.where('ts', '<', before);
+      const snap = await q.orderBy('ts', 'desc').limit(MEDIA_PAGE).get();
+      const items = snap.docs.map((d) => d.data());
+      socket.emit('media-list', { items, append, done: items.length < MEDIA_PAGE });
+    } catch (err) {
+      console.error('Media list failed:', err.message);
+      socket.emit('media-list', { items: [], append, done: true });
+    }
+  });
+
+  // ---------- Notes + points (secret chat) ----------
+  // Notes button kholne par: saare notes, sabke points, aur ruki hui requests
+  socket.on('get-notes', async () => {
+    const { roomCode, unlocked } = socket.data;
+    if (!roomCode || !unlocked || !db) return;
+    try {
+      const base = roomRef(roomCode);
+      const [notesSnap, pointsSnap, pendingSnap] = await Promise.all([
+        base.collection('secretNotes').orderBy('ts', 'desc').limit(NOTES_LIMIT).get(),
+        base.collection('secretPoints').get(),
+        base.collection('pointRequests').where('status', '==', 'pending').get()
+      ]);
+      const notes = notesSnap.docs.map((d) => d.data()); // sabse naya sabse pehle
+      const points = pointsSnap.docs
+        .map((d) => {
+          const x = d.data();
+          return { name: x.name, points: x.points || 0 };
+        })
+        .sort((a, b) => String(a.name).localeCompare(String(b.name)));
+      const pending = pendingSnap.docs.map((d) => d.data()).sort((a, b) => a.ts - b.ts);
+      socket.emit('notes-data', { notes, points, pending });
+    } catch (err) {
+      console.error('Notes load failed:', err.message);
+      socket.emit('notes-error', 'Notes load nahi ho paye, dobara try karo');
+    }
+  });
+
+  // Naya note jodna (koi bhi likh sakta hai)
+  socket.on('add-note', async ({ text } = {}) => {
+    const { name, roomCode, unlocked } = socket.data;
+    if (!roomCode || !unlocked || !db || typeof text !== 'string') return;
+    const clean = text.trim().slice(0, MAX_NOTE_LENGTH);
+    if (!clean) return;
+
+    const note = { id: makeId(), name, text: clean, ts: Date.now() };
+    try {
+      await roomRef(roomCode).collection('secretNotes').doc(note.id).set(note);
+      emitToUnlocked(roomCode, 'note-added', note);
+    } catch (err) {
+      console.error('Note save failed:', err.message);
+      socket.emit('notes-error', 'Note save nahi hua, dobara try karo');
+    }
+  });
+
+  // Point badhane (+1) ya ghatane (-1) ki request, reason ke saath. Pending save rehti hai.
+  socket.on('point-request', async ({ target, delta, reason } = {}) => {
+    const { name, roomCode, unlocked } = socket.data;
+    if (!roomCode || !unlocked || !db) return;
+    if (typeof target !== 'string' || !target || target.length > 100) return;
+    if (delta !== 1 && delta !== -1) return;
+    if (typeof reason !== 'string') return;
+    const cleanReason = reason.trim().slice(0, MAX_REASON_LENGTH);
+    if (!cleanReason) return;
+
+    try {
+      const userSnap = await pointUserRef(roomCode, target).get();
+      if (!userSnap.exists) return socket.emit('notes-error', 'Ye user nahi mila');
+
+      const req = {
+        id: makeId(),
+        from: name,
+        target,
+        delta,
+        reason: cleanReason,
+        status: 'pending',
+        ts: Date.now()
+      };
+      await roomRef(roomCode).collection('pointRequests').doc(req.id).set(req);
+      emitToUnlocked(roomCode, 'point-request-new', req);
+    } catch (err) {
+      console.error('Point request failed:', err.message);
+      socket.emit('notes-error', 'Request nahi ja payi, dobara try karo');
+    }
+  });
+
+  // Request par approve ya deny (request bhejne wale ke alawa koi bhi ek kar sakta hai)
+  socket.on('point-respond', async ({ id, approve } = {}) => {
+    const { name, roomCode, unlocked } = socket.data;
+    if (!roomCode || !unlocked || !db) return;
+    if (typeof id !== 'string' || !id || id.length > 60 || typeof approve !== 'boolean') return;
+
+    try {
+      const reqRef = roomRef(roomCode).collection('pointRequests').doc(id);
+      const result = await db.runTransaction(async (t) => {
+        // Pehle saari reads, phir writes
+        const reqSnap = await t.get(reqRef);
+        if (!reqSnap.exists) return { error: 'Request nahi mili' };
+        const req = reqSnap.data();
+        if (req.status !== 'pending') return { error: 'Is request par pehle hi jawab ho chuka hai' };
+        if (req.from === name) return { error: 'Apni request khud approve nahi kar sakte' };
+
+        const pRef = pointUserRef(roomCode, req.target);
+        const pSnap = await t.get(pRef);
+        const current = pSnap.exists ? (pSnap.data().points || 0) : 0;
+        const points = approve ? current + req.delta : current;
+
+        const resolvedTs = Date.now();
+        const status = approve ? 'approved' : 'denied';
+        t.update(reqRef, { status, resolvedBy: name, resolvedTs });
+        if (approve) t.set(pRef, { name: req.target, points }, { merge: true });
+
+        return { req: { ...req, status, resolvedBy: name, resolvedTs }, points };
+      });
+
+      if (result.error) return socket.emit('notes-error', result.error);
+      emitToUnlocked(roomCode, 'point-request-resolved', result);
+    } catch (err) {
+      console.error('Point respond failed:', err.message);
+      socket.emit('notes-error', 'Jawab save nahi hua, dobara try karo');
+    }
+  });
+
+  // Ek user ke points ki poori history (kis reason se kya badla, approve / deny)
+  socket.on('get-point-history', async ({ target } = {}) => {
+    const { roomCode, unlocked } = socket.data;
+    if (!roomCode || !unlocked || !db) return;
+    if (typeof target !== 'string' || !target || target.length > 100) return;
+    try {
+      const snap = await roomRef(roomCode)
+        .collection('pointRequests')
+        .where('target', '==', target)
+        .get();
+      const items = snap.docs
+        .map((d) => d.data())
+        .sort((a, b) => b.ts - a.ts)
+        .slice(0, POINT_HISTORY_LIMIT);
+      socket.emit('point-history', { target, items });
+    } catch (err) {
+      console.error('Point history failed:', err.message);
+      socket.emit('notes-error', 'History load nahi ho payi');
+    }
+  });
+
+  // Typing indicator (normal chat)
+  socket.on('typing', () => {
+    const { name, roomCode } = socket.data;
+    if (roomCode) socket.to(roomCode).emit('typing', { name });
+  });
+
+  socket.on('stop-typing', () => {
+    const { name, roomCode } = socket.data;
+    if (roomCode) socket.to(roomCode).emit('stop-typing', { name });
+  });
+
+  // Typing indicator (secret chat) - sirf unlocked logon ko dikhta hai
+  socket.on('secret-typing', () => {
+    const { name, roomCode, unlocked } = socket.data;
+    if (!roomCode || !unlocked) return;
+    emitToUnlocked(roomCode, 'secret-typing', { name }, socket);
+  });
+
+  socket.on('secret-stop-typing', () => {
+    const { name, roomCode, unlocked } = socket.data;
+    if (!roomCode || !unlocked) return;
+    emitToUnlocked(roomCode, 'secret-stop-typing', { name }, socket);
+  });
+
+  // Normal text message (kabhi save nahi hoti)
+  socket.on('chat-message', (data) => {
+    const { name, roomCode } = socket.data;
+    if (!roomCode) return;
+
+    const isObj = typeof data === 'object' && data !== null;
+    const message = isObj ? data.message : data;
+    const replyTo = isObj ? (data.replyTo || null) : null;
+
+    const id = makeId();
+    trackNormalMessage(id, roomCode, name);
+    io.to(roomCode).emit('chat-message', { id, name, message, replyTo });
+  });
+
+  // Normal chat ka message edit karna (sirf apna hi message)
+  socket.on('edit-message', ({ id, newText } = {}) => {
+    const { name, roomCode } = socket.data;
+    if (!roomCode || typeof id !== 'string' || typeof newText !== 'string') return;
+
+    const text = newText.trim().slice(0, MAX_MESSAGE_LENGTH);
+    if (!text) return;
+
+    const owner = normalMessageOwners.get(id);
+    if (!owner || owner.roomCode !== roomCode || owner.name !== name) return;
+
+    io.to(roomCode).emit('message-edited', { id, newText: text });
+  });
+
+  // Normal chat mein dil lagana / hatana (kabhi save nahi hota)
+  socket.on('heart', ({ id, on } = {}) => {
+    const { name, roomCode } = socket.data;
+    if (!roomCode || typeof id !== 'string' || id.length > 60 || typeof on !== 'boolean') return;
+    io.to(roomCode).emit('heart', { id, name, on });
+  });
+
+  // Normal media message (kabhi save nahi hoti)
+  socket.on('media-message', ({ url, type, replyTo }) => {
+    const { name, roomCode } = socket.data;
+    if (!roomCode) return;
+
+    io.to(roomCode).emit('media-message', {
+      id: makeId(),
+      name,
+      url,
+      type,
+      replyTo: replyTo || null
+    });
+  });
+
+  // Secret chat ka text message - sirf unlocked logon ko dikhta hai, hamesha save hota hai
+  socket.on('secret-message', (data) => {
+    const { name, roomCode, unlocked } = socket.data;
+    if (!roomCode || !unlocked) return;
+
+    const isObj = typeof data === 'object' && data !== null;
+    const message = isObj ? data.message : data;
+    const replyTo = isObj ? (data.replyTo || null) : null;
+
+    const msg = { id: makeId(), name, message, replyTo, kind: 'text', ts: Date.now() };
+
+    emitToUnlocked(roomCode, 'secret-message', msg);
+    saveSecretMessage(roomCode, msg);
+  });
+
+  // Secret chat ka message edit karna (sirf apna hi text message)
+  socket.on('edit-secret-message', async ({ id, newText } = {}) => {
+    const { name, roomCode, unlocked } = socket.data;
+    if (!roomCode || !unlocked || !db) return;
+    if (typeof id !== 'string' || typeof newText !== 'string') return;
+
+    const text = newText.trim().slice(0, MAX_MESSAGE_LENGTH);
+    if (!text) return;
+
+    try {
+      const ref = roomRef(roomCode).collection('secretMessages').doc(id);
+      const snap = await ref.get();
+      if (!snap.exists) return;
+
+      const data = snap.data();
+      if (data.kind !== 'text' || data.name !== name) return;
+
+      await ref.update({ message: text, edited: true });
+
+      emitToUnlocked(roomCode, 'secret-message-edited', { id, newText: text });
+    } catch (err) {
+      console.error('Secret message edit failed:', err.message);
+    }
+  });
+
+  // Secret chat mein dil lagana / hatana - database mein save hota hai
+  socket.on('secret-heart', async ({ id, on } = {}) => {
+    const { name, roomCode, unlocked } = socket.data;
+    if (!roomCode || !unlocked || !db) return;
+    if (typeof id !== 'string' || id.length > 60 || typeof on !== 'boolean') return;
+
+    try {
+      const ref = roomRef(roomCode).collection('secretMessages').doc(id);
+      const snap = await ref.get();
+      if (!snap.exists) return;
+
+      const FieldValue = admin.firestore.FieldValue;
+      await ref.update({
+        hearts: on ? FieldValue.arrayUnion(name) : FieldValue.arrayRemove(name)
+      });
+
+      emitToUnlocked(roomCode, 'secret-heart', { id, name, on });
+    } catch (err) {
+      console.error('Secret heart failed:', err.message);
+    }
+  });
+
+  // Secret chat ka media message
+  socket.on('secret-media-message', ({ url, type, replyTo }) => {
+    const { name, roomCode, unlocked } = socket.data;
+    if (!roomCode || !unlocked) return;
+
+    const msg = { id: makeId(), name, url, type, replyTo: replyTo || null, kind: 'media', ts: Date.now() };
+
+    emitToUnlocked(roomCode, 'secret-message', msg);
+    saveSecretMessage(roomCode, msg);
+    saveSecretMedia(roomCode, msg);
+  });
+
+  // ---------- Call (audio / video) ----------
+  // Call shuru karna: room ke baaki logon ko "incoming call" dikhega
+  socket.on('call-start', ({ secret } = {}) => {
+    const { name, roomCode, unlocked } = socket.data;
+    if (!roomCode || socket.data.callPeer) return;
+    const isSecret = secret === true;
+    if (isSecret && !unlocked) return;
+
+    socket.data.callSecret = isSecret;
+    emitToOthersForCall(socket, isSecret, 'incoming-call', {
+      from: socket.id,
+      name,
+      secret: isSecret
+    });
+  });
+
+  // Uthane se pehle caller ne khud kaat diya
+  socket.on('call-cancel', () => {
+    if (!socket.data.roomCode || socket.data.callPeer) return;
+    emitToOthersForCall(socket, socket.data.callSecret, 'call-cancelled', { from: socket.id });
+    socket.data.callSecret = false;
+  });
+
+  // Samne wale ne uthaya ya kaata
+  socket.on('call-response', ({ to, accepted } = {}) => {
+    const caller = callTarget(socket, to);
+    if (!caller) return;
+
+    if (accepted !== true) {
+      caller.emit('call-response', { from: socket.id, accepted: false });
       return;
     }
-    const other = devs.find((d) => d.deviceId !== speaker.deviceId);
-    speakerOn = !speakerOn;
-    await remoteVideo.setSinkId(speakerOn ? speaker.deviceId : other.deviceId);
-    updateCallUI();
-  } catch (err) {
-    speakerOn = false;
-    toast('Speaker badal nahi paya');
-    updateCallUI();
-  }
-}
 
-/* Video button: camera turant chalu, samne wala uthaye tab meri video usko jati hai */
-async function toggleVideo() {
-  if (callState !== 'incall' || !videoSender) return;
-  if (localVideoOn) {
-    await stopCamera();
-    return;
-  }
-  if (!(await startCamera())) return;
-  if (remoteVideoOn) {
-    // Samne wala pehle se video par hai, puchne ki zaroorat nahi
-    await sendCamera();
-    return;
-  }
-  videoRequestPending = true;
-  sendSignal({ type: 'video-request' });
-  toast('Video ke liye puch raha hoon...');
-  clearTimeout(videoRequestTimer);
-  videoRequestTimer = setTimeout(async () => {
-    if (videoRequestPending) {
-      videoRequestPending = false;
-      await stopCamera();
-      toast('Video ka jawab nahi aaya');
+    if (caller.data.callPeer || socket.data.callPeer) {
+      socket.emit('call-ended', { from: to, busy: true });
+      return;
     }
-  }, 20000);
-}
 
-// Camera chalu (HD maangte hain), abhi sirf mujhe dikhta hai
-async function startCamera() {
-  try {
-    const s = await navigator.mediaDevices.getUserMedia({
-      video: {
-        facingMode: 'user',
-        width: { ideal: 1280 },
-        height: { ideal: 720 },
-        frameRate: { ideal: 30 }
-      }
-    });
-    localVideoTrack = s.getVideoTracks()[0];
-    try { localVideoTrack.contentHint = 'detail'; } catch (e) {}
-    localVideoEl.srcObject = new MediaStream([localVideoTrack]);
-    localVideoOn = true;
-    updateCallUI();
-    return true;
-  } catch (err) {
-    toast('Camera nahi chal paya, permission check karo');
-    return false;
-  }
-}
-
-// Meri video samne wale ko bhejna shuru
-async function sendCamera() {
-  if (!videoSender || !localVideoTrack || videoSending || callState !== 'incall') return;
-  try {
-    await videoSender.replaceTrack(localVideoTrack);
-    videoSending = true;
-    sendSignal({ type: 'video-state', on: true });
-    tuneVideo();
-    if (!qualityTimer) qualityTimer = setInterval(tuneVideo, 3000);
-  } catch (e) {
-    console.error(e);
-  }
-}
-
-// Camera band
-async function stopCamera() {
-  const wasSending = videoSending;
-  videoRequestPending = false;
-  clearTimeout(videoRequestTimer);
-  if (qualityTimer) { clearInterval(qualityTimer); qualityTimer = null; }
-  if (localVideoTrack) localVideoTrack.stop();
-  localVideoTrack = null;
-  localVideoEl.srcObject = null;
-  localVideoOn = false;
-  videoSending = false;
-  swapped = false;
-  try { if (videoSender && wasSending) await videoSender.replaceTrack(null); } catch (e) {}
-  if (wasSending) sendSignal({ type: 'video-state', on: false });
-  updateCallUI();
-}
-
-// Internet ke hisaab se quality: tez ho to 720p HD, slow ho to 480p tak (usse neeche nahi)
-async function tuneVideo() {
-  if (!pc || !videoSender || !videoSending) return;
-  try {
-    let bw = 0;
-    const stats = await pc.getStats();
-    stats.forEach((r) => {
-      if (r.type === 'candidate-pair' && r.state === 'succeeded' && (r.nominated || r.selected) && r.availableOutgoingBitrate) {
-        bw = r.availableOutgoingBitrate;
-      }
-    });
-    const p = videoSender.getParameters();
-    if (!p.encodings || !p.encodings.length) p.encodings = [{}];
-    p.encodings[0].maxBitrate = 2500000;
-    p.encodings[0].scaleResolutionDownBy = (bw && bw < 900000) ? 1.5 : 1;
-    await videoSender.setParameters(p);
-  } catch (e) {}
-}
-
-function hangUp() {
-  if (callState === 'calling') socket.emit('call-cancel');
-  else if (callState === 'incall') socket.emit('call-end');
-  cleanupCall('Call khatam');
-}
-
-function cleanupCall(msg) {
-  stopRing();
-  hideIncoming();
-  clearTimeout(callTimeout);
-  clearTimeout(videoRequestTimer);
-  if (callTimer) { clearInterval(callTimer); callTimer = null; }
-  if (qualityTimer) { clearInterval(qualityTimer); qualityTimer = null; }
-  if (pc) { try { pc.close(); } catch (e) {} pc = null; }
-  if (localStream) localStream.getTracks().forEach((t) => t.stop());
-  if (localVideoTrack) localVideoTrack.stop();
-  localStream = null;
-  localVideoTrack = null;
-  videoSender = null;
-  localVideoOn = false;
-  videoSending = false;
-  remoteVideoOn = false;
-  videoRequestPending = false;
-  swapped = false;
-  micOn = true;
-  speakerOn = false;
-  pendingCandidates = [];
-  incomingCall = null;
-  callPeerId = null;
-  callState = 'idle';
-  remoteVideo.srcObject = null;
-  localVideoEl.srcObject = null;
-  callScreen.style.display = 'none';
-  updateCallUI();
-  if (msg) toast(msg);
-}
-
-/* ---------- Helpers ---------- */
-function scrollDown() {
-  messagesBox.scrollTop = messagesBox.scrollHeight;
-}
-
-function escapeHtml(str) {
-  const div = document.createElement('div');
-  div.innerText = str;
-  return div.innerHTML;
-}
-
-/* Text mein jo bhi link ho use neela clickable link bana deta hai (naye tab mein khulta hai) */
-function linkify(text) {
-  const safe = escapeHtml(text);
-  return safe.replace(/((https?:\/\/|www\.)[^\s<]+)/gi, (m) => {
-    let url = m;
-    let tail = '';
-    while (/[.,!?;:)\]]$/.test(url)) {
-      tail = url.slice(-1) + tail;
-      url = url.slice(0, -1);
-    }
-    const href = /^https?:\/\//i.test(url) ? url : 'https://' + url;
-    return '<a class="chat-link" href="' + href + '" target="_blank" rel="noopener noreferrer">' + url + '</a>' + tail;
+    caller.data.callPeer = socket.id;
+    socket.data.callPeer = caller.id;
+    socket.data.callSecret = caller.data.callSecret;
+    caller.emit('call-response', { from: socket.id, name: socket.data.name, accepted: true });
   });
-}
-</script>
-</body>
-</html>
+
+  // WebRTC ke signals (offer, answer, ice, video request/accept/decline) seedha dusre banda tak
+  socket.on('call-signal', ({ to, data } = {}) => {
+    if (socket.data.callPeer !== to) return;
+    const target = callTarget(socket, to);
+    if (!target) return;
+    target.emit('call-signal', { from: socket.id, data });
+  });
+
+  socket.on('call-end', () => endCall(socket));
+
+  socket.on('disconnect', () => {
+    endCall(socket);
+
+    const { name, roomCode } = socket.data;
+    if (!roomCode) return;
+
+    socket.to(roomCode).emit('stop-typing', { name });
+    emitToUnlocked(roomCode, 'secret-stop-typing', { name }, socket);
+
+    // Agar isi naam ka koi aur connection isi room mein abhi bhi hai
+    // (jaise dobara judne ke baad purana connection der se band hua), to "left" nahi dikhana
+    let stillHere = false;
+    for (const [, s] of io.sockets.sockets) {
+      if (s.id !== socket.id && s.data.roomCode === roomCode && s.data.name === name) {
+        stillHere = true;
+        break;
+      }
+    }
+    if (stillHere) return;
+
+    const key = leaveKey(roomCode, name);
+    if (leaveTimers.has(key)) clearTimeout(leaveTimers.get(key));
+    leaveTimers.set(key, setTimeout(() => {
+      leaveTimers.delete(key);
+      leftAnnounced.add(key);
+      io.to(roomCode).emit('system-message', `${name} left the room`);
+    }, LEAVE_GRACE_MS));
+  });
+});
+
+const PORT = process.env.PORT || 3000;
+server.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
+});
