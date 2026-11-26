@@ -328,7 +328,7 @@ body.swiping { user-select: none; -webkit-user-select: none; }
   border-radius: 8px;
   font-size: 14px;
 }
-#modal-error { color: #d32f2f; font-size: 12px; min-height: 16px; margin: 4px 0; }
+#modal-error, #reason-error { color: #d32f2f; font-size: 12px; min-height: 16px; margin: 4px 0; }
 .modal-actions { display: flex; gap: 8px; margin-top: 6px; }
 .modal-actions button {
   flex: 1;
@@ -338,8 +338,8 @@ body.swiping { user-select: none; -webkit-user-select: none; }
   cursor: pointer;
   font-size: 14px;
 }
-#modal-cancel { background: #e0e0e0; }
-#modal-ok { background: #764ba2; color: white; }
+#modal-cancel, #reason-cancel { background: #e0e0e0; }
+#modal-ok, #reason-ok { background: #764ba2; color: white; }
 
 .secret-box {
   background: white;
@@ -408,6 +408,94 @@ body.swiping { user-select: none; -webkit-user-select: none; }
   border-radius: 16px;
   cursor: pointer;
 }
+
+/* Notes + points (secret chat) */
+#notes-panel { z-index: 20; }
+#notes-btn { position: relative; }
+#notes-dot {
+  display: none;
+  position: absolute;
+  top: -3px;
+  right: -3px;
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  background: #ff3b30;
+  border: 2px solid #4a2468;
+}
+#notes-body {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 12px;
+  background: #f5f5f5;
+}
+.nsec-title { font-size: 13px; font-weight: 600; color: #4a2468; margin: 12px 0 6px; }
+.nsec-title:first-child { margin-top: 0; }
+.small-note { text-align: center; color: #999; font-size: 12px; padding: 8px; }
+#points-row { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
+.pbox {
+  background: #fff;
+  border-radius: 12px;
+  padding: 10px 8px;
+  text-align: center;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.12);
+}
+.pname { font-size: 13px; color: #555; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pval { font-size: 32px; font-weight: 700; color: #764ba2; margin: 4px 0 8px; }
+.pact { display: flex; justify-content: center; gap: 8px; }
+.pact button {
+  width: 34px;
+  height: 34px;
+  border: none;
+  border-radius: 50%;
+  background: #764ba2;
+  color: #fff;
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.pact button.hist { background: #e0e0e0; color: #4a2468; }
+.pact button .ic { width: 18px; height: 18px; }
+.req-card, .note-item, .hist-item {
+  background: #fff;
+  border-radius: 10px;
+  padding: 8px 10px;
+  margin-bottom: 6px;
+  font-size: 13px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+  word-break: break-word;
+}
+.req-top { font-weight: 600; color: #333; }
+.req-why { color: #555; margin-top: 2px; }
+.req-wait { color: #999; font-size: 12px; margin-top: 4px; }
+.req-actions { display: flex; gap: 8px; margin-top: 8px; }
+.req-actions button {
+  flex: 1;
+  padding: 8px;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 13px;
+  color: #fff;
+}
+.req-actions button.ok { background: #34c759; }
+.req-actions button.no { background: #ff3b30; }
+.req-actions button:disabled { opacity: 0.5; }
+.note-meta { font-size: 11px; color: #999; margin-bottom: 2px; }
+.note-text { white-space: pre-wrap; color: #333; }
+.note-text a.chat-link { color: #1a73e8; text-decoration: underline; word-break: break-all; }
+.note-add { border: none; border-radius: 12px; margin-bottom: 8px; padding: 8px; }
+#reason-panel, #phist-panel { z-index: 25; }
+#phist-list { flex: 1; overflow-y: auto; padding: 12px; background: #f5f5f5; }
+.hist-sign { font-weight: 700; margin-right: 6px; }
+.hist-sign.plus { color: #2e9e4f; }
+.hist-sign.minus { color: #d32f2f; }
+.hist-status { font-size: 12px; margin-left: 4px; }
+.hist-meta { font-size: 11px; color: #999; margin-top: 3px; }
 
 /* Call screen (iPhone jaisa) */
 #call-screen {
@@ -560,6 +648,10 @@ body.swiping { user-select: none; -webkit-user-select: none; }
     <symbol id="i-speaker" viewBox="0 0 24 24"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/></symbol>
     <symbol id="i-video" viewBox="0 0 24 24"><path d="M17 10.5V7c0-.55-.45-1-1-1H4c-.55 0-1 .45-1 1v10c0 .55.45 1 1 1h12c.55 0 1-.45 1-1v-3.5l4 4v-11l-4 4z"/></symbol>
     <symbol id="i-play" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></symbol>
+    <!-- Notes ka icon -->
+    <symbol id="i-note" viewBox="0 0 24 24"><path d="M14 2H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z"/></symbol>
+    <!-- History (ghadi) ka icon -->
+    <symbol id="i-history" viewBox="0 0 24 24"><path d="M13 3a9 9 0 0 0-9 9H1l3.89 3.89.07.14L9 12H6c0-3.87 3.13-7 7-7s7 3.13 7 7-3.13 7-7 7c-1.93 0-3.68-.79-4.94-2.06l-1.42 1.42A8.954 8.954 0 0 0 13 21a9 9 0 0 0 0-18zm-1 5v5l4.28 2.54.72-1.21-3.5-2.08V8H12z"/></symbol>
     <!-- Photos (gallery) ka rangeen phool -->
     <symbol id="i-photos" viewBox="0 0 24 24">
       <ellipse cx="12" cy="6.6" rx="3" ry="4.6" fill="#f5584f" opacity=".85"/>
@@ -626,6 +718,7 @@ body.swiping { user-select: none; -webkit-user-select: none; }
       <div class="secret-head">
         <span>&#10084;&#65039; Secret chat</span>
         <span class="secret-actions">
+          <button id="notes-btn" onclick="openNotes()" title="Notes"><svg class="ic"><use href="#i-note"/></svg><span id="notes-dot"></span></button>
           <button class="app-ic" onclick="openMedia()" title="Media"><svg class="ic"><use href="#i-photos"/></svg></button>
           <button onclick="startCall(true)" title="Call"><svg class="ic"><use href="#i-phone"/></svg></button>
           <button onclick="closeHistory()">&#10006;</button>
@@ -654,6 +747,53 @@ body.swiping { user-select: none; -webkit-user-select: none; }
         <button onclick="closeMedia()">&#10006;</button>
       </div>
       <div id="media-grid"></div>
+    </div>
+  </div>
+
+  <!-- Notes + points (secret chat) -->
+  <div id="notes-panel" class="overlay">
+    <div class="secret-box">
+      <div class="secret-head">
+        <span>Notes</span>
+        <button onclick="closeNotes()">&#10006;</button>
+      </div>
+      <div id="notes-body">
+        <div class="nsec-title">Points</div>
+        <div id="points-row"></div>
+        <div class="nsec-title">Approval ke liye ruki requests</div>
+        <div id="pending-list"></div>
+        <div class="nsec-title">Notes</div>
+        <div class="input-row note-add">
+          <input type="text" id="note-input" placeholder="Naya note likho" maxlength="1000">
+          <button onclick="sendNote()">&#10148;</button>
+        </div>
+        <div id="notes-list"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Point badhane / ghatane se pehle reason likhne ka box -->
+  <div id="reason-panel" class="overlay">
+    <div class="modal-box">
+      <h3 id="reason-title"></h3>
+      <p>Reason likhna zaroori hai. Dusre ke approve karne par hi point badlega.</p>
+      <input type="text" id="reason-input" maxlength="300" placeholder="Reason">
+      <div id="reason-error"></div>
+      <div class="modal-actions">
+        <button id="reason-cancel">Cancel</button>
+        <button id="reason-ok">Send</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Ek user ke points ki history -->
+  <div id="phist-panel" class="overlay">
+    <div class="secret-box">
+      <div class="secret-head">
+        <span id="phist-title">History</span>
+        <button onclick="closePointHistory()">&#10006;</button>
+      </div>
+      <div id="phist-list"></div>
     </div>
   </div>
 
@@ -1466,6 +1606,9 @@ socket.on('history', (items) => {
   if (!wasOpen) secretMsgInput.focus();
 
   if (awaitingSecret) flushSecretPending();
+
+  // Network ke baad dobara judne par agar notes khule the to unhe taaza kar do
+  if (notesIsOpen()) socket.emit('get-notes');
 });
 
 // Upar scroll karte hi aur purane messages mangwao
@@ -1594,6 +1737,9 @@ function closeHistory() {
   cancelEdit();
   secretMsgInput.value = '';
   closeMedia();
+  closeNotes();
+  notesBadge = 0;
+  updateNotesDot();
   historyPanel.style.display = 'none';
   historyList.innerHTML = '';
   historyHasMore = false;
@@ -1695,6 +1841,382 @@ socket.on('media-list', (res) => {
     mediaGrid.appendChild(note);
   }
 });
+
+/* ---------- Notes + points (secret chat) ---------- */
+const notesPanel = document.getElementById('notes-panel');
+const notesDot = document.getElementById('notes-dot');
+const notesBody = document.getElementById('notes-body');
+const pointsRow = document.getElementById('points-row');
+const pendingList = document.getElementById('pending-list');
+const notesList = document.getElementById('notes-list');
+const noteInput = document.getElementById('note-input');
+const reasonPanel = document.getElementById('reason-panel');
+const reasonInput = document.getElementById('reason-input');
+const reasonError = document.getElementById('reason-error');
+const phistPanel = document.getElementById('phist-panel');
+const phistList = document.getElementById('phist-list');
+
+let notesBadge = 0;      // mere approval ke liye kitni requests ruki hain (laal nishan)
+let notesData = null;    // notes khule hon tab: { notes, points, pending }
+let reasonTarget = null; // { target, delta }
+let phistTarget = null;  // jis user ki history khuli hai
+
+function notesIsOpen() { return notesPanel.style.display === 'flex'; }
+function phistIsOpen() { return phistPanel.style.display === 'flex'; }
+
+function updateNotesDot() {
+  notesDot.style.display = notesBadge > 0 ? 'block' : 'none';
+}
+
+function smallNote(text) {
+  const d = document.createElement('div');
+  d.className = 'small-note';
+  d.innerText = text;
+  return d;
+}
+
+function signText(delta) {
+  return delta > 0 ? '+1' : '\u22121';
+}
+
+function statusText(r) {
+  if (r.status === 'approved') return '\u2705 Approved by ' + (r.resolvedBy || '');
+  if (r.status === 'denied') return '\u274C Denied by ' + (r.resolvedBy || '');
+  return '\u23F3 Pending';
+}
+
+function openNotes() {
+  notesData = null;
+  pointsRow.innerHTML = '';
+  pendingList.innerHTML = '';
+  notesList.innerHTML = '';
+  pointsRow.appendChild(smallNote('Loading...'));
+  notesPanel.style.display = 'flex';
+  notesBody.scrollTop = 0;
+  socket.emit('get-notes');
+}
+
+function closeNotes() {
+  notesPanel.style.display = 'none';
+  closeReason();
+  closePointHistory();
+  notesData = null;
+  noteInput.value = '';
+  pointsRow.innerHTML = '';
+  pendingList.innerHTML = '';
+  notesList.innerHTML = '';
+}
+
+socket.on('notes-badge', ({ count }) => {
+  notesBadge = count || 0;
+  updateNotesDot();
+});
+
+socket.on('notes-data', (d) => {
+  if (!notesIsOpen()) return;
+  notesData = {
+    notes: (d && d.notes) || [],
+    points: (d && d.points) || [],
+    pending: (d && d.pending) || []
+  };
+  notesBadge = notesData.pending.filter((r) => r.from !== myName).length;
+  updateNotesDot();
+  renderPoints();
+  renderPending();
+  renderNotes();
+});
+
+socket.on('notes-error', (text) => {
+  toast(text || 'Kuch gadbad hui, dobara try karo');
+  if (notesIsOpen() && !notesData) {
+    pointsRow.innerHTML = '';
+    pointsRow.appendChild(smallNote(text || 'Load nahi hua'));
+  }
+});
+
+/* Points ke dibbe (har user ka ek) */
+function renderPoints() {
+  pointsRow.innerHTML = '';
+  const pts = notesData ? notesData.points : [];
+  if (!pts.length) {
+    pointsRow.appendChild(smallNote('Abhi koi user nahi'));
+    return;
+  }
+  pts.forEach((p) => {
+    const box = document.createElement('div');
+    box.className = 'pbox';
+
+    const nm = document.createElement('div');
+    nm.className = 'pname';
+    nm.innerText = p.name + (p.name === myName ? ' (you)' : '');
+
+    const val = document.createElement('div');
+    val.className = 'pval';
+    val.innerText = p.points;
+
+    const act = document.createElement('div');
+    act.className = 'pact';
+
+    const minus = document.createElement('button');
+    minus.innerText = '\u2212';
+    minus.title = '-1 point';
+    minus.onclick = () => askPoint(p.name, -1);
+
+    const plus = document.createElement('button');
+    plus.innerText = '+';
+    plus.title = '+1 point';
+    plus.onclick = () => askPoint(p.name, 1);
+
+    const hist = document.createElement('button');
+    hist.className = 'hist';
+    hist.title = 'History';
+    hist.innerHTML = '<svg class="ic"><use href="#i-history"/></svg>';
+    hist.onclick = () => openPointHistory(p.name);
+
+    act.appendChild(minus);
+    act.appendChild(plus);
+    act.appendChild(hist);
+    box.appendChild(nm);
+    box.appendChild(val);
+    box.appendChild(act);
+    pointsRow.appendChild(box);
+  });
+}
+
+/* Approval ke liye ruki requests */
+function renderPending() {
+  pendingList.innerHTML = '';
+  const list = notesData ? notesData.pending : [];
+  if (!list.length) {
+    pendingList.appendChild(smallNote('Koi request ruki nahi hai'));
+    return;
+  }
+  list.forEach((r) => pendingList.appendChild(buildRequestCard(r)));
+}
+
+function buildRequestCard(r) {
+  const card = document.createElement('div');
+  card.className = 'req-card';
+
+  const top = document.createElement('div');
+  top.className = 'req-top';
+  top.innerText = r.from + ' \u2192 ' + r.target + ': ' + signText(r.delta) + ' point';
+
+  const why = document.createElement('div');
+  why.className = 'req-why';
+  why.innerText = 'Reason: ' + r.reason;
+
+  card.appendChild(top);
+  card.appendChild(why);
+
+  if (r.from !== myName) {
+    const row = document.createElement('div');
+    row.className = 'req-actions';
+    const ok = document.createElement('button');
+    ok.className = 'ok';
+    ok.innerText = 'Approve';
+    const no = document.createElement('button');
+    no.className = 'no';
+    no.innerText = 'Deny';
+    const respond = (approve) => {
+      if (!socket.connected) return toast('Network nahi hai');
+      ok.disabled = true;
+      no.disabled = true;
+      socket.emit('point-respond', { id: r.id, approve: approve });
+    };
+    ok.onclick = () => respond(true);
+    no.onclick = () => respond(false);
+    row.appendChild(ok);
+    row.appendChild(no);
+    card.appendChild(row);
+  } else {
+    const wait = document.createElement('div');
+    wait.className = 'req-wait';
+    wait.innerText = '\u23F3 Dusre ke approval ka wait';
+    card.appendChild(wait);
+  }
+  return card;
+}
+
+/* Notes */
+function renderNotes() {
+  notesList.innerHTML = '';
+  const list = notesData ? notesData.notes : [];
+  if (!list.length) {
+    notesList.appendChild(smallNote('Abhi koi note nahi hai'));
+    return;
+  }
+  list.forEach((n) => notesList.appendChild(buildNoteItem(n)));
+}
+
+function buildNoteItem(n) {
+  const el = document.createElement('div');
+  el.className = 'note-item';
+  el.innerHTML =
+    '<div class="note-meta">' + escapeHtml(n.name || '') + ' \u2022 ' +
+    escapeHtml(new Date(n.ts).toLocaleString()) + '</div>' +
+    '<div class="note-text">' + linkify(n.text || '') + '</div>';
+  return el;
+}
+
+function sendNote() {
+  const text = noteInput.value.trim();
+  if (!text) return;
+  if (!socket.connected) return toast('Network nahi hai');
+  socket.emit('add-note', { text: text });
+  noteInput.value = '';
+}
+
+noteInput.addEventListener('keypress', (e) => {
+  if (e.key === 'Enter') sendNote();
+});
+
+socket.on('note-added', (n) => {
+  if (!notesIsOpen() || !notesData) return;
+  notesData.notes.unshift(n);
+  const empty = notesList.querySelector('.small-note');
+  if (empty) empty.remove();
+  notesList.insertBefore(buildNoteItem(n), notesList.firstChild);
+});
+
+/* Point badhane / ghatane se pehle reason poochna */
+function askPoint(target, delta) {
+  if (!socket.connected) return toast('Network nahi hai');
+  reasonTarget = { target: target, delta: delta };
+  document.getElementById('reason-title').innerText = signText(delta) + ' point: ' + target;
+  reasonInput.value = '';
+  reasonError.innerText = '';
+  reasonPanel.style.display = 'flex';
+  reasonInput.focus();
+}
+
+function closeReason() {
+  reasonPanel.style.display = 'none';
+  reasonTarget = null;
+  reasonInput.value = '';
+  reasonError.innerText = '';
+}
+
+function submitReason() {
+  if (!reasonTarget) return;
+  const reason = reasonInput.value.trim();
+  if (!reason) {
+    reasonError.innerText = 'Reason likhna zaroori hai';
+    return;
+  }
+  if (!socket.connected) {
+    reasonError.innerText = 'Network nahi hai';
+    return;
+  }
+  socket.emit('point-request', {
+    target: reasonTarget.target,
+    delta: reasonTarget.delta,
+    reason: reason
+  });
+  closeReason();
+  toast('Request bhej di, approval ka wait');
+}
+
+document.getElementById('reason-ok').addEventListener('click', submitReason);
+document.getElementById('reason-cancel').addEventListener('click', closeReason);
+reasonInput.addEventListener('keypress', (e) => {
+  if (e.key === 'Enter') submitReason();
+});
+
+/* Kisi ne nayi request bheji (ya maine khud bheji) */
+socket.on('point-request-new', (r) => {
+  if (r.from !== myName) {
+    notesBadge++;
+    updateNotesDot();
+    if (secretIsOpen() && !notesIsOpen()) toast(r.from + ' ne ek point request bheji');
+  }
+  if (notesIsOpen() && notesData) {
+    notesData.pending.push(r);
+    renderPending();
+  }
+  if (phistIsOpen() && phistTarget === r.target) socket.emit('get-point-history', { target: phistTarget });
+});
+
+/* Request par approve ya deny ho gaya */
+socket.on('point-request-resolved', ({ req, points }) => {
+  if (req.from !== myName) notesBadge = Math.max(0, notesBadge - 1);
+  updateNotesDot();
+  if (req.from === myName) {
+    toast(req.resolvedBy + (req.status === 'approved' ? ' ne approve kiya \u2705' : ' ne deny kiya \u274C'));
+  }
+  if (notesIsOpen() && notesData) {
+    notesData.pending = notesData.pending.filter((x) => x.id !== req.id);
+    if (req.status === 'approved') {
+      const p = notesData.points.find((x) => x.name === req.target);
+      if (p) p.points = points;
+    }
+    renderPoints();
+    renderPending();
+  }
+  if (phistIsOpen() && phistTarget === req.target) socket.emit('get-point-history', { target: phistTarget });
+});
+
+/* Naya user secret chat mein aaya to uska dibba bhi aa jaye */
+socket.on('point-user', ({ name, points }) => {
+  if (!notesIsOpen() || !notesData) return;
+  if (notesData.points.some((p) => p.name === name)) return;
+  notesData.points.push({ name: name, points: points || 0 });
+  notesData.points.sort((a, b) => String(a.name).localeCompare(String(b.name)));
+  renderPoints();
+});
+
+/* Ek user ke points ki history */
+function openPointHistory(target) {
+  phistTarget = target;
+  document.getElementById('phist-title').innerText = target + ' ki history';
+  phistList.innerHTML = '';
+  phistList.appendChild(smallNote('Loading...'));
+  phistPanel.style.display = 'flex';
+  socket.emit('get-point-history', { target: target });
+}
+
+function closePointHistory() {
+  phistPanel.style.display = 'none';
+  phistTarget = null;
+  phistList.innerHTML = '';
+}
+
+socket.on('point-history', ({ target, items }) => {
+  if (!phistIsOpen() || phistTarget !== target) return;
+  phistList.innerHTML = '';
+  if (!items || !items.length) {
+    phistList.appendChild(smallNote('Abhi koi history nahi hai'));
+    return;
+  }
+  items.forEach((r) => phistList.appendChild(buildHistoryItem(r)));
+});
+
+function buildHistoryItem(r) {
+  const el = document.createElement('div');
+  el.className = 'hist-item';
+
+  const top = document.createElement('div');
+  const sign = document.createElement('span');
+  sign.className = 'hist-sign ' + (r.delta > 0 ? 'plus' : 'minus');
+  sign.innerText = signText(r.delta);
+  const st = document.createElement('span');
+  st.className = 'hist-status';
+  st.innerText = statusText(r);
+  top.appendChild(sign);
+  top.appendChild(st);
+
+  const why = document.createElement('div');
+  why.innerText = r.reason;
+
+  const meta = document.createElement('div');
+  meta.className = 'hist-meta';
+  meta.innerText = 'Request: ' + r.from + ' \u2022 ' + new Date(r.ts).toLocaleString();
+
+  el.appendChild(top);
+  el.appendChild(why);
+  el.appendChild(meta);
+  return el;
+}
 
 /* ---------- Call (audio + video) ---------- */
 const callScreen = document.getElementById('call-screen');
