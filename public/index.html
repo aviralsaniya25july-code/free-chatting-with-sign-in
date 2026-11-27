@@ -328,7 +328,7 @@ body.swiping { user-select: none; -webkit-user-select: none; }
   border-radius: 8px;
   font-size: 14px;
 }
-#modal-error, #reason-error { color: #d32f2f; font-size: 12px; min-height: 16px; margin: 4px 0; }
+#modal-error, #reason-error, #admin-error { color: #d32f2f; font-size: 12px; min-height: 16px; margin: 4px 0; }
 .modal-actions { display: flex; gap: 8px; margin-top: 6px; }
 .modal-actions button {
   flex: 1;
@@ -338,7 +338,7 @@ body.swiping { user-select: none; -webkit-user-select: none; }
   cursor: pointer;
   font-size: 14px;
 }
-#modal-cancel, #reason-cancel { background: #e0e0e0; }
+#modal-cancel, #reason-cancel, #admin-cancel, #hold-cancel { background: #e0e0e0; }
 #modal-ok, #reason-ok { background: #764ba2; color: white; }
 
 .secret-box {
@@ -497,6 +497,30 @@ body.swiping { user-select: none; -webkit-user-select: none; }
 .hist-status { font-size: 12px; margin-left: 4px; }
 .hist-meta { font-size: 11px; color: #999; margin-top: 3px; }
 
+/* Delete (sirf admin): media select, hold menu, admin password box */
+.media-item { position: relative; -webkit-touch-callout: none; user-select: none; -webkit-user-select: none; }
+.media-item.sel img, .media-item.sel video { outline: 3px solid #ffd54f; outline-offset: -3px; opacity: 0.65; }
+.media-item.sel::after {
+  content: '\2713';
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: #ffd54f;
+  color: #4a2468;
+  font-size: 14px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.pbox { -webkit-touch-callout: none; user-select: none; -webkit-user-select: none; }
+#hold-panel { z-index: 26; }
+#admin-panel { z-index: 28; }
+.modal-actions button.danger { background: #ff3b30; color: #fff; }
+
 /* Call screen (iPhone jaisa) */
 #call-screen {
   z-index: 30;
@@ -652,6 +676,8 @@ body.swiping { user-select: none; -webkit-user-select: none; }
     <symbol id="i-note" viewBox="0 0 24 24"><path d="M14 2H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z"/></symbol>
     <!-- History (ghadi) ka icon -->
     <symbol id="i-history" viewBox="0 0 24 24"><path d="M13 3a9 9 0 0 0-9 9H1l3.89 3.89.07.14L9 12H6c0-3.87 3.13-7 7-7s7 3.13 7 7-3.13 7-7 7c-1.93 0-3.68-.79-4.94-2.06l-1.42 1.42A8.954 8.954 0 0 0 13 21a9 9 0 0 0 0-18zm-1 5v5l4.28 2.54.72-1.21-3.5-2.08V8H12z"/></symbol>
+    <!-- Delete (dustbin) ka icon -->
+    <symbol id="i-trash" viewBox="0 0 24 24"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></symbol>
     <!-- Photos (gallery) ka rangeen phool -->
     <symbol id="i-photos" viewBox="0 0 24 24">
       <ellipse cx="12" cy="6.6" rx="3" ry="4.6" fill="#f5584f" opacity=".85"/>
@@ -743,8 +769,11 @@ body.swiping { user-select: none; -webkit-user-select: none; }
   <div id="media-panel" class="overlay">
     <div class="secret-box">
       <div class="secret-head">
-        <span>Secret media</span>
-        <button onclick="closeMedia()">&#10006;</button>
+        <span id="media-title">Secret media</span>
+        <span class="secret-actions">
+          <button id="media-del-btn" style="display:none" onclick="deleteSelectedMedia()" title="Delete"><svg class="ic"><use href="#i-trash"/></svg></button>
+          <button onclick="mediaHeadClose()">&#10006;</button>
+        </span>
       </div>
       <div id="media-grid"></div>
     </div>
@@ -794,6 +823,31 @@ body.swiping { user-select: none; -webkit-user-select: none; }
         <button onclick="closePointHistory()">&#10006;</button>
       </div>
       <div id="phist-list"></div>
+    </div>
+  </div>
+
+  <!-- Point wale dibbe par hold karne par: Delete ka option -->
+  <div id="hold-panel" class="overlay">
+    <div class="modal-box">
+      <h3 id="hold-title"></h3>
+      <div class="modal-actions">
+        <button id="hold-cancel">Cancel</button>
+        <button id="hold-delete" class="danger">Delete</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Admin password (delete karne ke liye) -->
+  <div id="admin-panel" class="overlay">
+    <div class="modal-box">
+      <h3>Delete (admin only)</h3>
+      <p id="admin-what"></p>
+      <input type="password" id="admin-pass" placeholder="Enter admin password to delete">
+      <div id="admin-error"></div>
+      <div class="modal-actions">
+        <button id="admin-cancel">Cancel</button>
+        <button id="admin-ok" class="danger">Delete</button>
+      </div>
     </div>
   </div>
 
@@ -1738,6 +1792,7 @@ function closeHistory() {
   secretMsgInput.value = '';
   closeMedia();
   closeNotes();
+  closeAdmin();
   notesBadge = 0;
   updateNotesDot();
   historyPanel.style.display = 'none';
@@ -1776,6 +1831,7 @@ function openMedia() {
 }
 
 function closeMedia() {
+  exitMediaSelect();
   mediaPanel.style.display = 'none';
   mediaGrid.innerHTML = '';
   mediaOldestTs = null;
@@ -1799,10 +1855,13 @@ socket.on('media-list', (res) => {
     if (!m.url) return;
     const cell = document.createElement('div');
     cell.className = 'media-item';
+    cell.dataset.id = m.id || '';
+    attachMediaSelect(cell, m.id);
     const link = document.createElement('a');
     link.href = m.url;
     link.target = '_blank';
     link.rel = 'noopener noreferrer';
+    link.draggable = false;
     let thumb;
     if (m.type && m.type.startsWith('video/')) {
       thumb = document.createElement('video');
@@ -1900,6 +1959,7 @@ function closeNotes() {
   notesPanel.style.display = 'none';
   closeReason();
   closePointHistory();
+  closeHold();
   notesData = null;
   noteInput.value = '';
   pointsRow.innerHTML = '';
@@ -1979,6 +2039,7 @@ function renderPoints() {
     box.appendChild(nm);
     box.appendChild(val);
     box.appendChild(act);
+    attachPointHold(box, p.name);
     pointsRow.appendChild(box);
   });
 }
@@ -2217,6 +2278,199 @@ function buildHistoryItem(r) {
   el.appendChild(meta);
   return el;
 }
+
+/* ---------- Delete (sirf admin password ke saath) ---------- */
+const adminPanel = document.getElementById('admin-panel');
+const adminPass = document.getElementById('admin-pass');
+const adminError = document.getElementById('admin-error');
+const holdPanel = document.getElementById('hold-panel');
+let adminAction = null; // { type: 'media', ids } ya { type: 'point', name }
+let holdTarget = null;
+
+function adminIsOpen() { return adminPanel.style.display === 'flex'; }
+
+function askAdminDelete(action) {
+  if (!socket.connected) return toast('Network nahi hai');
+  adminAction = action;
+  document.getElementById('admin-what').innerText = action.type === 'media'
+    ? 'Delete ' + action.ids.length + ' media'
+    : 'Delete ' + action.name + ' ka points box';
+  adminPass.value = '';
+  adminError.innerText = '';
+  adminPanel.style.display = 'flex';
+  adminPass.focus();
+}
+
+function closeAdmin() {
+  adminPanel.style.display = 'none';
+  adminAction = null;
+  adminPass.value = '';
+  adminError.innerText = '';
+}
+
+function submitAdmin() {
+  if (!adminAction) return;
+  const password = adminPass.value;
+  if (!password) {
+    adminError.innerText = 'Enter admin password to delete';
+    return;
+  }
+  if (!socket.connected) {
+    adminError.innerText = 'Network nahi hai';
+    return;
+  }
+  if (adminAction.type === 'media') {
+    socket.emit('delete-media', { ids: adminAction.ids, password: password });
+  } else {
+    socket.emit('delete-point-user', { name: adminAction.name, password: password });
+  }
+}
+
+document.getElementById('admin-ok').addEventListener('click', submitAdmin);
+document.getElementById('admin-cancel').addEventListener('click', closeAdmin);
+adminPass.addEventListener('keypress', (e) => {
+  if (e.key === 'Enter') submitAdmin();
+});
+
+socket.on('admin-error', (text) => {
+  if (adminIsOpen()) adminError.innerText = text;
+  else toast(text);
+});
+
+socket.on('admin-ok', () => {
+  const a = adminAction;
+  closeAdmin();
+  if (a && a.type === 'media') exitMediaSelect();
+  toast('Delete ho gaya');
+});
+
+/* Media: hold karke select, phir click se aur select, upar Delete button */
+let mediaSelectMode = false;
+const mediaSelected = new Set();
+let mediaHoldFired = 0;
+
+function updateMediaHead() {
+  document.getElementById('media-title').innerText = mediaSelectMode
+    ? mediaSelected.size + ' selected'
+    : 'Secret media';
+  document.getElementById('media-del-btn').style.display = mediaSelectMode ? 'flex' : 'none';
+}
+
+function toggleMediaSelect(cell, id) {
+  if (!id) return;
+  if (mediaSelected.has(id)) {
+    mediaSelected.delete(id);
+    cell.classList.remove('sel');
+  } else {
+    mediaSelected.add(id);
+    cell.classList.add('sel');
+  }
+  updateMediaHead();
+}
+
+function exitMediaSelect() {
+  mediaSelectMode = false;
+  mediaSelected.clear();
+  mediaGrid.querySelectorAll('.media-item.sel').forEach((c) => c.classList.remove('sel'));
+  updateMediaHead();
+}
+
+function mediaHeadClose() {
+  if (mediaSelectMode) exitMediaSelect();
+  else closeMedia();
+}
+
+function deleteSelectedMedia() {
+  if (!mediaSelected.size) return;
+  askAdminDelete({ type: 'media', ids: Array.from(mediaSelected) });
+}
+
+function attachMediaSelect(cell, id) {
+  let timer = null;
+  cell.addEventListener('pointerdown', () => {
+    clearTimeout(timer);
+    if (mediaSelectMode) return;
+    timer = setTimeout(() => {
+      timer = null;
+      mediaHoldFired = Date.now();
+      mediaSelectMode = true;
+      toggleMediaSelect(cell, id);
+    }, 500);
+  });
+  ['pointerup', 'pointerleave', 'pointercancel', 'pointermove'].forEach((ev) => {
+    cell.addEventListener(ev, () => { clearTimeout(timer); timer = null; });
+  });
+  cell.addEventListener('click', (e) => {
+    // Hold se abhi select mode shuru hua hai to media khulni nahi chahiye
+    if (Date.now() - mediaHoldFired < 700) { e.preventDefault(); return; }
+    if (mediaSelectMode) {
+      e.preventDefault();
+      toggleMediaSelect(cell, id);
+    }
+  });
+  cell.addEventListener('contextmenu', (e) => e.preventDefault());
+}
+
+// Media delete ho gayi: grid aur secret chat dono se hata do
+socket.on('media-deleted', ({ ids }) => {
+  (ids || []).forEach((id) => {
+    mediaSelected.delete(id);
+    const cell = mediaGrid.querySelector('.media-item[data-id="' + id + '"]');
+    if (cell) cell.remove();
+    const msgEl = historyList.querySelector('[data-id="' + id + '"]');
+    if (msgEl) msgEl.remove();
+  });
+  updateMediaHead();
+  if (mediaPanel.style.display === 'flex' && !mediaGrid.querySelector('.media-item') && !mediaGrid.querySelector('.grid-note')) {
+    mediaGrid.appendChild(gridNote('Abhi koi media nahi hai'));
+  }
+});
+
+/* Points ka dibba: hold karne par Delete ka option */
+function attachPointHold(box, name) {
+  let timer = null;
+  box.addEventListener('pointerdown', (e) => {
+    if (e.target.closest('button')) return;
+    clearTimeout(timer);
+    timer = setTimeout(() => { timer = null; openHold(name); }, 600);
+  });
+  ['pointerup', 'pointerleave', 'pointercancel', 'pointermove'].forEach((ev) => {
+    box.addEventListener(ev, () => { clearTimeout(timer); timer = null; });
+  });
+  box.addEventListener('contextmenu', (e) => e.preventDefault());
+}
+
+function openHold(name) {
+  holdTarget = name;
+  document.getElementById('hold-title').innerText = name;
+  holdPanel.style.display = 'flex';
+}
+
+function closeHold() {
+  holdPanel.style.display = 'none';
+  holdTarget = null;
+}
+
+document.getElementById('hold-cancel').addEventListener('click', closeHold);
+document.getElementById('hold-delete').addEventListener('click', () => {
+  const name = holdTarget;
+  closeHold();
+  if (name) askAdminDelete({ type: 'point', name: name });
+});
+
+// Kisi ka points box delete ho gaya
+socket.on('point-user-deleted', ({ name }) => {
+  if (phistIsOpen() && phistTarget === name) closePointHistory();
+  if (reasonTarget && reasonTarget.target === name) closeReason();
+  if (notesIsOpen() && notesData) {
+    notesData.points = notesData.points.filter((p) => p.name !== name);
+    notesData.pending = notesData.pending.filter((r) => r.target !== name && r.from !== name);
+    notesBadge = notesData.pending.filter((r) => r.from !== myName).length;
+    updateNotesDot();
+    renderPoints();
+    renderPending();
+  }
+});
 
 /* ---------- Call (audio + video) ---------- */
 const callScreen = document.getElementById('call-screen');
