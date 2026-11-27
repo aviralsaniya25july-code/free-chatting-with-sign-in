@@ -6,7 +6,13 @@ const multer = require('multer');
 const fs = require('fs');
 const crypto = require('crypto');
 const admin = require('firebase-admin');
-const { S3Client, PutObjectCommand, GetObjectCommand } = require('@aws-sdk/client-s3');
+const {
+  S3Client,
+  PutObjectCommand,
+  GetObjectCommand,
+  DeleteObjectCommand,
+  ListObjectVersionsCommand
+} = require('@aws-sdk/client-s3');
 const { getSignedUrl } = require('@aws-sdk/s3-request-presigner');
 
 const app = express();
@@ -269,12 +275,98 @@ function pointUserRef(roomCode, name) {
 // Jis user ka dibba pehle se ban chuka hai uska baar baar database na dekhna pade
 const knownPointUsers = new Set();
 
+// Jin users ka dibba admin ne delete kar diya (room|naam). Database mein bhi save rehta hai.
+const deletedPointUsers = new Set();
+
+function deletedPointUserRef(roomCode, name) {
+  return roomRef(roomCode).collection('secretDeletedUsers').doc('u-' + encodeURIComponent(name).slice(0, 400));
+}
+
+async function isPointUserDeleted(roomCode, name) {
+  const key = roomCode + '|' + name;
+  if (deletedPointUsers.has(key)) return true;
+  const snap = await deletedPointUserRef(roomCode, name).get();
+  if (snap.exists) {
+    deletedPointUsers.add(key);
+    return true;
+  }
+  return false;
+}
+
+// ---------- Admin password (delete ke liye) ----------
+// Password code mein nahi hai, Render ke Environment mein ADMIN_PASSWORD naam se rakhna hai.
+const adminTries = new Map(); // roomCode -> { fails, lockUntil }
+
+function adminPasswordOk(password) {
+  const real = process.env.ADMIN_PASSWORD;
+  if (!real || typeof password !== 'string') return false;
+  const a = crypto.createHash('sha256').update(password).digest();
+  const b = crypto.createHash('sha256').update(real).digest();
+  return crypto.timingSafeEqual(a, b);
+}
+
+// true = password sahi hai, aage badho. false = jawab socket ko bhej diya gaya hai.
+function checkAdmin(socket, roomCode, password) {
+  if (!process.env.ADMIN_PASSWORD) {
+    socket.emit('admin-error', 'Admin password abhi set nahi hai');
+    return false;
+  }
+  const t = adminTries.get(roomCode) || { fails: 0, lockUntil: 0 };
+  if (Date.now() < t.lockUntil) {
+    socket.emit('admin-error', 'Chalaki mat karo, thodi der baad try karna');
+    return false;
+  }
+  if (!adminPasswordOk(password)) {
+    t.fails += 1;
+    if (t.fails >= 5) {
+      t.fails = 0;
+      t.lockUntil = Date.now() + 60 * 1000;
+    }
+    adminTries.set(roomCode, t);
+    socket.emit('admin-error', 'Chalaki mat karo');
+    return false;
+  }
+  adminTries.delete(roomCode);
+  return true;
+}
+
+// Media file hamesha ke liye delete (B2 se bhi, uske purane versions ke saath, taaki jagah sach mein khaali ho)
+async function deleteStoredFile(url) {
+  if (typeof url !== 'string') return;
+  if (url.startsWith('/media/')) {
+    const key = url.slice('/media/'.length);
+    if (!s3 || !/^[a-zA-Z0-9._-]+$/.test(key)) return;
+    const listed = await s3.send(new ListObjectVersionsCommand({ Bucket: B2_BUCKET, Prefix: key }));
+    const versions = [...(listed.Versions || []), ...(listed.DeleteMarkers || [])].filter((v) => v.Key === key);
+    if (!versions.length) {
+      await s3.send(new DeleteObjectCommand({ Bucket: B2_BUCKET, Key: key }));
+      return;
+    }
+    for (const v of versions) {
+      await s3.send(new DeleteObjectCommand({ Bucket: B2_BUCKET, Key: key, VersionId: v.VersionId }));
+    }
+  } else if (url.startsWith('/uploads/')) {
+    fs.unlink(path.join(uploadDir, path.basename(url)), () => {});
+  }
+}
+
+// Bahut saare documents ek saath delete karne ke liye
+async function deleteDocs(docs) {
+  for (let i = 0; i < docs.length; i += 400) {
+    const batch = db.batch();
+    docs.slice(i, i + 400).forEach((d) => batch.delete(d.ref));
+    await batch.commit();
+  }
+}
+
 // Jab koi secret chat unlock kare to uska points wala dibba ban jata hai (0 point se)
 async function ensurePointUser(roomCode, name) {
   if (!db || !roomCode || !name) return;
   const key = roomCode + '|' + name;
   if (knownPointUsers.has(key)) return;
   try {
+    // Jiska dibba admin ne delete kar diya, wo dobara kabhi nahi banega
+    if (await isPointUserDeleted(roomCode, name)) return;
     const ref = pointUserRef(roomCode, name);
     const snap = await ref.get();
     if (!snap.exists) {
@@ -638,6 +730,76 @@ io.on('connection', (socket) => {
     } catch (err) {
       console.error('Point history failed:', err.message);
       socket.emit('notes-error', 'History load nahi ho payi');
+    }
+  });
+
+  // ---------- Delete (sirf admin password ke saath, sirf secret chat) ----------
+  // Secret media delete: chat se bhi hat jati hai, B2 se bhi, koi notice nahi
+  socket.on('delete-media', async ({ ids, password } = {}) => {
+    const { roomCode, unlocked } = socket.data;
+    if (!roomCode || !unlocked || !db) return;
+    if (!Array.isArray(ids) || !ids.length || ids.length > 100) return;
+    const cleanIds = ids.filter((i) => typeof i === 'string' && i && i.length <= 60);
+    if (!cleanIds.length) return;
+    if (!checkAdmin(socket, roomCode, password)) return;
+
+    const base = roomRef(roomCode);
+    const deleted = [];
+    let failed = 0;
+    for (const id of cleanIds) {
+      try {
+        const mref = base.collection('secretMedia').doc(id);
+        const snap = await mref.get();
+        if (snap.exists) await deleteStoredFile(snap.data().url);
+        await Promise.all([mref.delete(), base.collection('secretMessages').doc(id).delete()]);
+        deleted.push(id);
+      } catch (err) {
+        failed += 1;
+        console.error('Media delete failed:', err.message);
+      }
+    }
+    if (deleted.length) emitToUnlocked(roomCode, 'media-deleted', { ids: deleted });
+    if (failed) socket.emit('admin-error', 'Kuch media delete nahi ho paye, dobara try karo');
+    else socket.emit('admin-ok');
+  });
+
+  // Kisi user ka points wala dibba delete: points, history, reason sab mit jate hain, aur wo dobara nahi banta
+  socket.on('delete-point-user', async ({ name, password } = {}) => {
+    const { roomCode, unlocked } = socket.data;
+    if (!roomCode || !unlocked || !db) return;
+    if (typeof name !== 'string' || !name || name.length > 100) return;
+    if (!checkAdmin(socket, roomCode, password)) return;
+
+    try {
+      const base = roomRef(roomCode);
+      const key = roomCode + '|' + name;
+
+      // Pehle "hamesha ke liye hata hua" likh do, taaki wo dobara na bane
+      await deletedPointUserRef(roomCode, name).set({ name, ts: Date.now() });
+      deletedPointUsers.add(key);
+      knownPointUsers.delete(key);
+
+      await pointUserRef(roomCode, name).delete();
+
+      // Uski history + reasons, aur jo requests usne bheji thi aur abhi ruki hain
+      const [toSnap, fromSnap] = await Promise.all([
+        base.collection('pointRequests').where('target', '==', name).get(),
+        base.collection('pointRequests').where('from', '==', name).where('status', '==', 'pending').get()
+      ]);
+      const all = new Map();
+      toSnap.docs.forEach((d) => all.set(d.id, d));
+      fromSnap.docs.forEach((d) => all.set(d.id, d));
+      await deleteDocs(Array.from(all.values()));
+
+      emitToUnlocked(roomCode, 'point-user-deleted', { name });
+      // Laal nishan ka count sabke liye dobara nikalo
+      for (const [, s] of io.sockets.sockets) {
+        if (s.data.roomCode === roomCode && s.data.unlocked) sendNotesBadge(s);
+      }
+      socket.emit('admin-ok');
+    } catch (err) {
+      console.error('Point user delete failed:', err.message);
+      socket.emit('admin-error', 'Delete nahi ho paya, dobara try karo');
     }
   });
 
